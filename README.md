@@ -1,6 +1,8 @@
 # console-tools
 Suite of in-console tools
 
+`do %console.red`
+
 Simple figures:
 ```
 circle
