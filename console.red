@@ -1213,7 +1213,6 @@ delete [either event/shift? [cut] [delete-text ctrl?]]
 		]
 	]
 	
-	set 'box function [][probe term/box/text]
 	;;Don't mess with history :)
 	;remove-lines: function [lines][
 	;	foreach line lines [remove find system/console/history line]
