@@ -30,17 +30,17 @@ styles       ;play wit console styling options
 There are some default settings that can influence things and which you can change with following:
 ```
 defaults [
-  'bounding-box ['large | 'small]
-| 'sources file! ;for `define`
+  'sources file! ;for `define`
 | 'tool-font [
     integer!     ;font-size
     | string!    ;font-name
-    | word!      ;font/style
+    | word!      ;font-style
     | block!     ;font-spec
     ]
 | 'toolbox integer! ;toolbox's width
 
 ;Figure's default attributes
+| 'bounding-box ['large | 'small] ;large - transparent face-box is window-size; small - box is 100x100
 | 'fill-pen   <color>
 | 'pen        <color>
 | 'line-width integer!
