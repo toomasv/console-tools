@@ -1,0 +1,16 @@
+#(
+    foreground: [238.232.213.0]
+    background: [42.58.86.0]
+    selected: [147.161.161.0]
+    string!: [133.153.1.0]
+    integer!: [220.51.48.0]
+    float!: [220.51.48.0]
+    pair!: [220.51.48.0]
+    percent!: [255.128.128]
+    datatype!: [43.161.152.0]
+    lit-word!: [39.139.210.0 bold]
+    set-word!: [39.139.210.0]
+    tuple!: [203.76.23.0]
+    url!: [39.139.210.0 underline]
+    comment!: [128.128.128]
+)
