@@ -34,10 +34,10 @@ defaults [
 | 'sources file! ;for `define`
 | 'tool-font [
     integer!     ;font-size
-		| string!    ;font-name
-		| word!      ;font/style
-		| block!     ;font-spec
-	  ]
+    | string!    ;font-name
+    | word!      ;font/style
+    | block!     ;font-spec
+    ]
 | 'toolbox integer! ;toolbox's width
 
 ;Figure's default attributes
@@ -46,22 +46,22 @@ defaults [
 | 'line-width integer!
 | 'rotate [pair! integer! | pair! | integer!] ;rotation center and angle
 | 'scale [
-		integer! integer!  ;separately x and y scale
-	  | 'x integer!      ;only x
-	  | 'y integer!      ;only y
-	  | integer!         ;same scale for both
-	  ]
+    integer! integer!  ;separately x and y scale
+    | 'x integer!      ;only x
+    | 'y integer!      ;only y
+    | integer!         ;same scale for both
+    ]
 | 'skew [
-		integer! integer! ;Same as for scale
-	  | 'x integer!
-	  | 'y integer! 
-	  | integer! 
-	  ]
-| 'translate [
-		pair!             ;Similar to scale
+    integer! integer! ;Same as for scale
     | 'x integer!
-	  | 'y integer!
-	  | integer!
-	  ]
+    | 'y integer! 
+    | integer! 
+    ]
+| 'translate [
+    pair!             ;Similar to scale
+    | 'x integer!
+    | 'y integer!
+    | integer!
+    ]
 ]
 ```
