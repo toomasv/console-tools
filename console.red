@@ -1,4 +1,8 @@
-Red []
+Red [
+	Description: "Suite of console tools"
+	Author: "Toomas Vooglaid"
+	Last: 10-Jun-2020
+]
 clear-reactions
 ctx: context [
 	console-ctx: self
@@ -225,12 +229,18 @@ ctx: context [
 		bounding-box: any [bb self/bounding-box]
 		pos: as-pair 200 gui-console-ctx/caret/offset/y 
 		dr: append copy orig compose bind dr :add-shape
-		if bounding-box = 'large [dr/translate: as-pair 200 gui-console-ctx/caret/offset/y + 70]
+		if bounding-box = 'large [dr/translate: as-pair 200 gui-console-ctx/caret/offset/y]; + 70]
 		sz: gui-console-ctx/console/size 
-		append window/pane ret: layout/only compose/only/deep either bounding-box = 'large [
-			[drawing-box (sz) all-over draw (dr)]                    ;with large bounding-box
-		][
-			[at (pos) drawing-box (size) all-over draw (dr)]   ;with small bounding-box
+		append window/pane ret: layout/only compose/only/deep case [
+			bounding-box = 'large [
+				[drawing-box (sz) all-over draw (dr)]                    ;with large bounding-box
+			]
+			pair? bounding-box [
+				[at (pos) drawing-box (bounding-box) all-over draw (dr)]
+			]
+			true [
+				[at (pos) drawing-box (size) all-over draw (dr)]   ;with small bounding-box
+			]
 		] 
 		if tool [ret/1/options: reduce [quote tool: type]]
 		first ret
@@ -433,6 +443,18 @@ ctx: context [
 							rectangle box [add-shape [box     (ofs) (ofs + 80x70)]]
 							line          [add-shape [line    (ofs) (ofs + 80x0)]]
 							arrow         [add-shape [line    (ofs) (end: ofs + 80x0) line (end - 10x5) (end) (end - 10x-5)]]
+							figure        [
+								either with [
+									either args/bounding-box [
+										bb: take remove find args 'bounding-box
+										add-shape/with args bb
+									][
+										add-shape args 
+									]
+								][
+									print "Figure needs draw-block added with `/with` refinement"
+								]
+							]
 							
 							notes         [
 								if not notes-visible? [
@@ -1107,7 +1129,8 @@ delete [either event/shift? [cut] [delete-text ctrl?]]
 			defaults [
 				parse what [
 					any [
-					  'bounding-box set bounding-box skip
+					  'bounding-box set bounding-box ['large | 'small | pair!]
+					| 'sources set sources file!
 					| 'tool-font set p skip (
 						switch type?/word p [
 							integer! [tool-font/size: p tool-font] 
@@ -1150,13 +1173,14 @@ delete [either event/shift? [cut] [delete-text ctrl?]]
 	]
 	
 	;Simple shapes
-	set 'circle    does [console add 'circle]
+	set 'circle    func [/with spec][either block? spec [console/with add 'circle :spec][console add 'circle]]
 	set 'circles func [n [integer!]][]
-	set 'ellipse   does [console add 'ellipse]
-	set 'square    does [console add 'square]
-	set 'rectangle does [console add 'rectangle]
-	set 'box       does [console add 'box]
-	set 'arrow     does [console add 'arrow]
+	set 'ellipse   func [/with spec][either block? spec [console/with add 'ellipse :spec][console add 'ellipse]]
+	set 'square    func [/with spec][either block? spec [console/with add 'square :spec][console add 'square]]
+	set 'rectangle func [/with spec][either block? spec [console/with add 'rectangle :spec][console add 'rectangle]]
+	set 'box       func [/with spec][either block? spec [console/with add 'box :spec][console add 'box]]
+	set 'arrow     func [/with spec][either block? spec [console/with add 'arrow :spec][console add 'arrow]]
+	set 'figure    func [spec][console/with add 'figure :spec]
 	
 	
 	set 'animate func [spec /local figure start end rate step limit][ ;TBD
