@@ -12,7 +12,7 @@ rectangle
 box
 arrow
 ```
-
+Custom figures may be added with `figure <draw-block>` (where draw-block can also contain `bounding-box <size>`).
 Also you can add any face with `console add <block of VID>`.
 
 Other tools:
