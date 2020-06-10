@@ -14,7 +14,7 @@ ctx: context [
 				color: transparent
 				options: [tool: figure]
 				menu: [
-					;"Edit" [
+					;"Edit" [               ;TBD
 					;	"Pen"        pen
 					;	"Fill-pen"   fill
 					;	"Line-width" line
@@ -127,7 +127,8 @@ ctx: context [
 	notes-face:     none
 	notes-saved?:   yes
 	reminds-saved?: yes
-	size: 100x100
+	size: 100x100            ;default size for figures
+	position: 'center        ;default position for figures
 	content: text:  none
 	bounding-box:   'small ;'large ;
 	toolbox: 300    ;default width of toolbox
@@ -224,22 +225,94 @@ ctx: context [
 		scale 1 1 
 		skew 0 0 
 	]
-	add-shape: function [dr /with bb /tool type][
+	add-shape: function [dr /with spec /tool type][
+		bounding-box: self/bounding-box
+		position: self/position
+		size: self/size
 		ofs: 10x10
-		bounding-box: any [bb self/bounding-box]
-		pos: as-pair 200 gui-console-ctx/caret/offset/y 
-		dr: append copy orig compose bind dr :add-shape
-		if bounding-box = 'large [dr/translate: as-pair 200 gui-console-ctx/caret/offset/y]; + 70]
+		fixed: false
 		sz: gui-console-ctx/console/size 
+		{spec [any [
+		      'fixed ;don't try to be smart adjusting layout
+		    | ['bounding-box | 'bb] <size: 'large | 'small | pair!>
+			| 'at <offset: pair! | 'center | 'top | 'bottom | 'left | 'right | 'top-left | 'top-right | 'bottom-left | 'bottom-right | 'enter> 
+			| <size: pair!> 
+			| 'pen [tuple! | word!] 
+			| <fill-pen: tuple! | word!> 
+			| <line-width: integer!>
+			| 'translate [pair! | 'x integer! | 'y integer | integer!]
+			| 'rotate <angle: integer! | float!> opt <center: pair!>
+			| 'scale [<x: number!> <y: number!> | ['x | 'y] number! | number!]
+			| 'skew  [<x: number!> <y: number!> | ['x | 'y] number! | number!]
+		]]}
+		orig: copy self/orig
+		if all [with not empty? spec] [
+			parse spec [;s: (probe s)
+				any [(s: none)
+				  'fixed (fixed: true)
+				| ['bounding-box | 'bb] s: ['large | 'small | pair!] (bounding-box: s/1)
+				| 'at s: [pair! | 'center | 'top | 'bottom | 'left | 'right | 'top-left | 'top-right | 'bottom-left | 'bottom-right | 'enter] (position: s/1)
+				| opt 'size pair! s: (size: s/-1)
+				| 'pen s: [word! | tuple!] (orig/pen: s/1)
+				| opt 'line-width integer! s: (orig/line-width: s/-1)
+				| 'translate s: [pair! (orig/translate: s/1) | ['x | 'y] integer! (orig/translate/(s/1): s/2) | integer! (orig/translate: to pair! s/1)]
+				| 'rotate s: [integer! | float!] (orig/rotate: s/1) opt [pair! (change skip find/tail orig 'rotate s/2)]
+				| 'scale s: [
+					2 number! (change find/tail orig 'scale copy/part s 2) 
+					| 'x number! (orig/scale: s/2)
+					| 'y number! (change next find/tail orig 'scale s/2)
+					| number! (change find/tail orig 'scale reduce [s/1 s/1])
+					]
+				| 'skew s: [
+					2 [integer! | float!] (change find/tail orig 'scale copy/part s 2) 
+					| 'x [integer! | float!] (orig/scale: s/2)
+					| 'y [integer! | float!] (change next find/tail orig 'scale s/2)
+					| [integer! | float!] (change find/tail orig 'scale reduce [s/1 s/1])
+					]
+				| opt 'fill-pen [word! | tuple!] s: (orig/fill-pen: s/-1)
+				]
+			|	s: (cause-error 'user 'message rejoin ["Figure's spec faulty at: " s])
+			]
+		]
+		
+		pos: either pair? position [
+			position
+		][
+			switch position [
+				center       [sz / 2 - (size / 2)]
+				top          [as-pair sz/x / 2 - (size/x / 2) 0]
+				bottom       [as-pair sz/x / 2 - (size/x / 2) sz/y - size/y]
+				left         [as-pair 0 sz/y / 2 - (size/y / 2)]
+				right        [as-pair sz/x - size/x - 17 sz/y / 2 - (size/y / 2)]
+				top-left     [0x0]
+				top-right    [as-pair sz/x - size/x - 17 0]
+				bottom-left  [as-pair 0 sz/y - size/y]
+				bottom-right [sz - size - 17x0]
+				enter        [gui-console-ctx/caret/offset]
+			]
+		]
+		
+		dr: append copy orig compose bind dr :add-shape
+		either bounding-box = 'large [
+			dr/translate: dr/translate + pos
+		][
+			either fixed [
+				if bounding-box = 'small [bounding-box: size]
+			][
+				bounding-box: either word? bounding-box [
+					size + dr/line-width
+				][
+					max bounding-box size + dr/line-width
+				]
+				dr/translate: max dr/translate to pair! dr/line-width / 2
+			]
+		]
 		append window/pane ret: layout/only compose/only/deep case [
 			bounding-box = 'large [
-				[drawing-box (sz) all-over draw (dr)]                    ;with large bounding-box
+				[at 0x0 drawing-box (sz) all-over draw (dr)]                    ;with large bounding-box
 			]
 			pair? bounding-box [
 				[at (pos) drawing-box (bounding-box) all-over draw (dr)]
-			]
-			true [
-				[at (pos) drawing-box (size) all-over draw (dr)]   ;with small bounding-box
 			]
 		] 
 		if tool [ret/1/options: reduce [quote tool: type]]
@@ -395,6 +468,12 @@ ctx: context [
 				tools/offset: as-pair lsp/offset/x 0 
 			]
 		at (as-pair window/size/x - 27 0) scr: scroller (as-pair 10 window/size/y) hidden 
+			react [
+				face/offset/x: window/size/x - 27 
+				face/size/y: window/size/y 
+				face/steps: 34 / window/size/y
+				adjust-scroller
+			]
 			with [steps: 34 / window/size/y][
 				tools/offset/y: lsp/offset/y: min 0 to-integer negate face/data * tools/size/y
 			]
@@ -431,29 +510,27 @@ ctx: context [
 	figures: [circle ellipse box line]
 	colors: load %Paired.png
 	
-	set 'console func ['op [word!] what [object! word! block!] /with 'args][
+	set 'console func ['op [word!] what [object! word! block!] /with 'args /local spec][
 		switch op [
 			add [
 				switch type?/word what [
 					word! [
 						switch what [
-							circle        [add-shape [circle  (ofs + 40x40) 40]]
-							ellipse       [add-shape [ellipse (ofs) (80x70)]]
-							square        [add-shape [box     (ofs) (ofs + 80)]]
-							rectangle box [add-shape [box     (ofs) (ofs + 80x70)]]
-							line          [add-shape [line    (ofs) (ofs + 80x0)]]
-							arrow         [add-shape [line    (ofs) (end: ofs + 80x0) line (end - 10x5) (end) (end - 10x-5)]]
+							circle        [add-shape/with [circle  (size / 2) (size/x / 2)] args]    ;(ofs + 40x40)
+							ellipse       [add-shape/with [ellipse 0x0 (size - 0x20)] args]   ;(ofs) (80x70)
+							square        [add-shape/with [box     0x0 (as-pair size/x size/x)] args] ;(ofs) (ofs + 80)
+							rectangle box [add-shape/with [box     0x0 (size - 0x20)] args] ;(ofs) (ofs + 80x70)
+							line          [add-shape/with [line    0x0 (as-pair size/x 0)] args] ;(ofs) (ofs + 80x0)
+							arrow         [add-shape/with [line    0x5 (end: as-pair size/x 5) line (end - 10x5) (end) (end - 10x-5)] args] ;(ofs) (end: ofs + 80x0)
 							figure        [
-								either with [
-									either args/bounding-box [
-										bb: take remove find args 'bounding-box
-										add-shape/with args bb
-									][
-										add-shape args 
-									]
-								][
-									print "Figure needs draw-block added with `/with` refinement"
+								spec: clear []
+								case/all [
+									args/bounding-box [append spec take/part find args 'bounding-box 2]
+									args/bb [append spec take/part find args 'bb 2]
+									args/at [append spec take/part find args 'at 2]
+									args/size [append spec take/part find args 'size 2]
 								]
+								add-shape/with args spec
 							]
 							
 							notes         [
@@ -1129,8 +1206,7 @@ delete [either event/shift? [cut] [delete-text ctrl?]]
 			defaults [
 				parse what [
 					any [
-					  'bounding-box set bounding-box ['large | 'small | pair!]
-					| 'sources set sources file!
+					  'sources set sources file!             ;where to find sources
 					| 'tool-font set p skip (
 						switch type?/word p [
 							integer! [tool-font/size: p tool-font] 
@@ -1144,21 +1220,23 @@ delete [either event/shift? [cut] [delete-text ctrl?]]
 						tools/size/x: toolbox
 						foreach tool tools/pane [tool/size/x: toolbox - 10]
 					  )
+					| 'bounding-box set bounding-box ['large | 'small | pair!]
+					| 'size set size pair!
 					| 'fill-pen set p skip (orig/fill-pen: p)
 					| 'pen set p skip (orig/pen: p)
 					| 'line-width set p skip (orig/line-width: p)
-					| 'rotate [1 2 [set p pair! (orig/rotate: p) | set p integer! (change next find/tail orig 'rotate p)]]
+					| 'rotate set p [integer! | float!] (orig/rotate: p) opt [set p pair! (change next find/tail orig 'rotate p)]
 					| 'scale s: [
-						integer! integer! (change/part find/tail orig 'scale copy/part s 2) 
-					  | 'x integer! (orig/scale: s/2)
-					  | 'y integer! (change next find/tail orig 'scale s/2)
-					  | integer! (change/part find/tail orig 'scale reduce [s/1 s/1] 2) 
+						2 number! (change/part find/tail orig 'scale copy/part s 2) 
+					  | 'x number! (orig/scale: s/2)
+					  | 'y number! (change next find/tail orig 'scale s/2)
+					  | number! (change/part find/tail orig 'scale reduce [s/1 s/1] 2) 
 					  ]
 					| 'skew s: [
-						integer! integer! (change/part find/tail orig 'skew copy/part s 2) 
-					  | 'x integer! (orig/skew: s/2)
-					  | 'y integer! (change next find/tail orig 'skew s/2)
-					  | integer! (change/part find/tail orig 'skew reduce [s/1 s/1] 2) 
+						2 [integer! | float!] (change/part find/tail orig 'skew copy/part s 2) 
+					  | 'x [integer! | float!] (orig/skew: s/2)
+					  | 'y [integer! | float!] (change next find/tail orig 'skew s/2)
+					  | [integer! | float!] (change/part find/tail orig 'skew reduce [s/1 s/1] 2) 
 					  ]
 					| 'translate [
 						set p pair! (orig/translate: p)
@@ -1174,29 +1252,25 @@ delete [either event/shift? [cut] [delete-text ctrl?]]
 	
 	;Simple shapes
 	set 'circle    func [/with spec][either block? spec [console/with add 'circle :spec][console add 'circle]]
-	set 'circles func [n [integer!]][]
+	;set 'circles   func [n [integer!]][] ;TBD?
 	set 'ellipse   func [/with spec][either block? spec [console/with add 'ellipse :spec][console add 'ellipse]]
 	set 'square    func [/with spec][either block? spec [console/with add 'square :spec][console add 'square]]
 	set 'rectangle func [/with spec][either block? spec [console/with add 'rectangle :spec][console add 'rectangle]]
 	set 'box       func [/with spec][either block? spec [console/with add 'box :spec][console add 'box]]
+	set 'line      func [/with spec][either block? spec [console/with add 'line :spec][console add 'line]]
 	set 'arrow     func [/with spec][either block? spec [console/with add 'arrow :spec][console add 'arrow]]
 	set 'figure    func [spec][console/with add 'figure :spec]
 	
+	set 'animate func [face action /rate r][face/actors: make face/actors [on-time: func [face event] action] if rate [face/rate: r]]
+	set 'stop func [what][foreach face what [face: get face face/rate: none]]
 	
-	set 'animate func [spec /local figure start end rate step limit][ ;TBD
+	set 'animate-all func [spec /local face action rate sw def][ ;TBD
 		parse spec [any [
-			set figure word! some [
-				set prop [path! | word!]                          ;property to animate
-				'from set start skip                              ;starting value, if any (if not - current value)
-				'to set end skip                                  ;ending value, if any (if not - unlimited?)
-				'by set step skip                                 ;stepping value, if any (if not - default 1)
-				'rate set rate [integer! | time!]                 ;if not - 20
-				opt ['loop | set times integer! opt 'times] (
-					fig: get first figure
-					drw: fig/draw
-					
-				) 
-			]
+			set face word! (face: get face) 
+			any [set sw set-word! set def block! (do compose [(sw) (def)])]
+			set action block! 
+			opt [[integer! | time!] s: (rate: s/-1)]
+			(animate/rate face action rate)
 		]]
 	]
 
@@ -1263,10 +1337,10 @@ delete [either event/shift? [cut] [delete-text ctrl?]]
 		]
 	]
 	set 'notes    does [console add 'notes]
+	set 'history  does [console add 'history]
 	set 'finder   does [console add 'finder]
 	set 'live     func [what][console/with add 'live :what]
 	set 'reminder does [console add 'reminder]
-	set 'history  does [console add 'history]
 	set 'remind   func [spec [block!]][write %reminds.txt new-line/all/skip sort/skip append reminds/tasks spec 2 true 2]
 	set 'define   does [console add 'define]
 	set 'helper   does [console add 'helper]
