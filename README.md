@@ -31,7 +31,7 @@ styles       ;play with console styling options
 Figures and tools can be removed by `console [clear | remove | delete] ['all | '<figure> | '<tool> | object!]`, e.g.
 ```
 console remove 'circle
-console remove 'all
+console clear 'all
 ```
 ```
 h: history
