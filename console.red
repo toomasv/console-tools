@@ -318,7 +318,7 @@ ctx: context [
 		if tool [ret/1/options: reduce [quote tool: type]]
 		first ret
 	]
-	add-face: function [spec [block!]][
+	add-tool: function [spec [block!]][
 		if not tools/parent [
 			append window/pane reduce [tools lsp]
 		]
@@ -341,6 +341,11 @@ ctx: context [
 		insert next window/pane ret: layout/only bind spec self
 		first ret
 	]
+	add-face: func [spec [block!]][
+		append window/pane layout/only bind compose/deep spec self
+		last window/pane
+	]
+	
 	close-tool: function [face][
 		type: face/options/tool
 		switch type [
@@ -510,7 +515,7 @@ ctx: context [
 	figures: [circle ellipse box line]
 	colors: load %Paired.png
 	
-	set 'console func ['op [word!] what [object! word! block!] /with 'args /local spec][
+	set 'console func ['op [word!] what [object! word! block!] /with 'args /as type /local spec][
 		switch op [
 			add [
 				switch type?/word what [
@@ -536,7 +541,7 @@ ctx: context [
 							notes         [
 								if not notes-visible? [
 									notes-visible?: yes
-									notes-face: add-face bind [
+									notes-face: add-tool bind [
 										panel options [tool: notes]
 										[
 											text "Notes" 60 
@@ -560,7 +565,7 @@ ctx: context [
 								]
 							]
 							history       [
-								add-face [
+								add-tool [
 									panel options [tool: history] [
 										text "History" 60 
 										button "Console" [focus-console]
@@ -733,7 +738,7 @@ ctx: context [
 										pen red 
 									] react [face/size: window/size]
 								] 
-								add-face bind [
+								add-tool bind [
 									panel options [tool: finder] [
 										text "Finder" 60 
 										button "Console" [focus-console]
@@ -805,7 +810,7 @@ ctx: context [
 							]
 							reminder      [
 								task-mark: [push [rotate 0 50x50 line 50x99 50x97]]
-								add-face bind [
+								add-tool bind [
 									panel options [tool: reminder] [
 										text "Remind" 60 
 										button "Console" [focus-console]
@@ -921,7 +926,7 @@ ctx: context [
 										attempt/safer [(def) either block? loaded [compose loaded][:loaded]]
 										term/refresh
 									]]
-									add-face compose/deep/only [
+									add-tool compose/deep/only [
 										panel options [tool: live] [
 											text "Live" 60
 											button "Console" [focus-console]
@@ -944,7 +949,7 @@ ctx: context [
 								] live-ctx
 							]
 							define        [
-								add-face bind [
+								add-tool bind [
 									panel options [tool: define][
 										text "Define" 60
 										button "Console" [focus-console]
@@ -980,7 +985,7 @@ ctx: context [
 								] define-ctx
 							]
 							helper        [
-								add-face [
+								add-tool [
 									panel options [tool: helper] [
 										text "Helper" 60
 										button "Console" [focus-console]
@@ -1073,7 +1078,7 @@ delete [either event/shift? [cut] [delete-text ctrl?]]
 								styles-ctx/colors: load %solar.png
 								styles-ctx/cfg: 1.285
 								
-								add-face bind compose/deep/only [
+								add-tool bind compose/deep/only [
 									panel options [tool: styles] [
 										text   "Styles" 60
 										button "Console" [focus-console]
@@ -1128,7 +1133,7 @@ delete [either event/shift? [cut] [delete-text ctrl?]]
 							]
 						]
 					]
-					block! [add-face what]
+					block! [switch/default type [tool [add-tool what] layer [add-layer what]][add-face what]]
 				]
 			]
 			remove clear delete [
