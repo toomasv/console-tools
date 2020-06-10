@@ -23,9 +23,9 @@ finder       ;find words and draw on screen, capture into %screenshot.png
 live <lit-word or lit-path> ;live editing experiment
 reminder     ;experiments with reminder
 history      ;quick selection from console's history (with contextual menu) into notes or caret (click)
-define       ;adaptation of @rebolek's `what`
-helper       ;Cosole hot-keys only so far
-styles       ;play wit console styling options
+define       ;adaptation of @rebolek's `where`
+helper       ;console hot-keys only so far
+styles       ;play with console styling options
 ```
 
 Figures and tools can be removed by `console [clear | remove | delete] ['all | '<figure> | '<tool> | object!]`, e.g.
