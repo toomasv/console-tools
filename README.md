@@ -10,6 +10,7 @@ ellipse
 square
 rectangle
 box
+line
 arrow
 ```
 Custom figures may be added with `figure <draw-block>` (where draw-block can also contain `bounding-box <size>`).
@@ -25,6 +26,16 @@ history      ;quick selection from console's history (with contextual menu) into
 define       ;adaptation of @rebolek's `what`
 helper       ;Cosole hot-keys only so far
 styles       ;play wit console styling options
+```
+
+Figures and tools can be removed by `console [clear | remove | delete] ['all | '<figure> | '<tool> | object!]`, e.g.
+```
+console remove 'circle
+console remove 'all
+```
+```
+h: history
+console remove h
 ```
 
 There are some default settings that can influence things and which you can change with following:
