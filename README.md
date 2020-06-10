@@ -29,7 +29,7 @@ styles       ;play wit console styling options
 
 There are some default settings that can influence things and which you can change with following:
 ```
-defaults [
+console defaults [some [
   'sources file! ;for `define`
 | 'tool-font [
     integer!     ;font-size
@@ -63,5 +63,6 @@ defaults [
     | 'y integer!
     | integer!
     ]
-]
+]]
 ```
+E.g. `console defaults [bounding-box large fill-pen red]`
