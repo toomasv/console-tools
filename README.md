@@ -21,7 +21,8 @@ Other tools:
 notes        ;take quick notes while playing (try `note 'last | note <int>` or enter issue(s) as marker(s) and then `note/to #start #end` )
 finder       ;find words and draw on screen, capture into %screenshot.png
 live <lit-word or lit-path> ;live editing experiment
-reminder     ;experiments with reminder
+reminder     ;experiments with reminder (24 hour clock), e.g.:
+             ;remind [9:00 "Breakfast" 10:00 "Meeting with X" 14:30 "Lunch at Y"]
 history      ;quick selection from console's history (with contextual menu) into notes or caret (click)
 define       ;adaptation of @rebolek's `where`
 helper       ;console hot-keys only so far
