@@ -1019,7 +1019,13 @@ ctx: context [
 														wrd: first wrd
 													]
 												]
-												inspector/text: help-string :wrd
+												either all [any [word? wrd path? wrd] event/ctrl? attempt/safer [ret: get wrd] word? :ret][
+													ctx: context? ret
+													ctx: body-of ctx
+													inspector/text: mold copy/part ctx 20
+												][
+													inspector/text: copy/part help-string :wrd 2000
+												]
 												last-word: txt
 											]
 										]
