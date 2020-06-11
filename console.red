@@ -141,7 +141,7 @@ ctx: context [
 	hour: minute: sec: dial: none
 	ws: charset " ^-^/]"
 	ws1: charset " ^-^/])"
-	par: charset {[](){}";}
+	par: charset {[]();}
 	wspar: union ws par
 	
 	;adapted from @rebolek's `where`
@@ -1000,51 +1000,72 @@ ctx: context [
 							]
 							helper        [
 								system/view/silent?: yes
-								console-ctx/rt: add-layer [at 3x0 rich-text 252.252.252 loose options [tool: helper];make-face/spec 'rich-text
-									wrap with [
+								console-ctx/rt: add-layer [at 3x0 rich-text 252.252.252 loose options [tool: helper]
+									wrap all-over with [
 										text: concat copy/part at term/lines term/top term/screen-cnt newline 
 										size: gui-console-ctx/win/size - 20 
 										font: gui-console-ctx/font
 										data: reduce [1x0 'backdrop silver]
-									] all-over on-over [/local [start end wrd txt]
-										start: any [find/tail/reverse at event/face/text offset-to-caret event/face event/offset wspar head start]
-										end: any [find start wspar tail start]
-										attempt/safer [txt: copy/part start (index? end) - (index? start)]
-										if last-word <> txt [
-											if attempt/safer [wrd: load txt] [
-												if path? wrd [
-													either value? first wrd [
-														if any-function? get first wrd [wrd: first wrd]
-													][
-														wrd: first wrd
+										actors: object [
+											fix: none
+											on-over: func [face event /local start end wrd txt ret][
+												if not fix [
+													start: any [
+														find/tail/reverse at event/face/text offset-to-caret event/face event/offset wspar 
+														head event/face/text
 													]
+													end: any [find start wspar tail start]
+													attempt/safer [txt: copy/part start (index? end) - (index? start)]
+													if last-word <> txt [
+														if attempt/safer [wrd: load txt] [
+															if path? wrd [
+																either value? first wrd [
+																	either any-function? get first wrd [
+																		wrd: first wrd
+																	][
+																		if not attempt/safer [get wrd][
+																			wrd: first wrd
+																		]
+																	]
+																][
+																	wrd: first wrd
+																]
+															]
+															either all [any [word? wrd path? wrd] attempt/safer [ret: get wrd] word? :ret][
+																ctx: context? ret
+																in-ctx: either system/words = ctx [
+																	"in global context"
+																][
+																	rejoin ["in context " mold copy/part body-of ctx 20]
+																] 
+																inspector/text: rejoin [help-string :wrd in-ctx]
+															][
+																inspector/text: copy/part help-string :wrd 2000
+															]
+															last-word: txt
+														]
+													]
+													change face/data as-pair start: index? start (index? end) - start
 												]
-												either all [any [word? wrd path? wrd] event/ctrl? attempt/safer [ret: get wrd] word? :ret][
-													ctx: context? ret
-													ctx: body-of ctx
-													inspector/text: mold copy/part ctx 20
-												][
-													inspector/text: copy/part help-string :wrd 2000
-												]
-												last-word: txt
 											]
+											on-wheel: func [face event][
+												gui-console-ctx/console/actors/on-wheel gui-console-ctx/console event
+												append clear face/text concat copy/part at term/lines term/top term/screen-cnt newline
+											]
+											on-down: func [face event][hlp-txt/color: either fix: not fix [silver][snow]]
 										]
-										change face/data as-pair start: index? start (index? end) - start
-									] on-wheel [
-										gui-console-ctx/console/actors/on-wheel gui-console-ctx/console event
-										append clear face/text concat copy/part at term/lines term/top term/screen-cnt newline
 									]
 								]
 								add-tool [
 									panel options [tool: helper] [
-										text "Helper" 60
+										hlp-txt: text "Helper" 60
 										button "Console" [focus-console]
 										button "Close"   [system/view/silent?: no close-tool face/parent]
 										return
 										;text "Subject:" 50 drop-list data ["keys" "inspect"] select 1
 										tab-panel 280x420 [
 											"inspect" [
-												inspector: box 260x400 top left font tool-font
+												inspector: box 260x400 top left wrap font tool-font
 												react [face/parent/size: tools/size - 40 face/size: face/parent/size]
 											]
 											"keys" [
