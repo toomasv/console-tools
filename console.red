@@ -1,9 +1,10 @@
 Red [
 	Description: "Suite of console tools"
 	Author: "Toomas Vooglaid"
-	Last: 10-Jun-2020
+	Last: 11-Jun-2020
 ]
 clear-reactions
+#include %concat.red
 ctx: context [
 	console-ctx: self
 	tool-font: make font! [size: 10 name: "Consolas"]
@@ -139,6 +140,9 @@ ctx: context [
 	bsp: lsp: content: none
 	hour: minute: sec: dial: none
 	ws: charset " ^-^/]"
+	ws1: charset " ^-^/])"
+	par: charset {[](){}";}
+	wspar: union ws par
 	
 	;adapted from @rebolek's `where`
 	definitions: clear []
@@ -337,8 +341,12 @@ ctx: context [
 		if not tools/visible? [tools/visible?: yes]
 		new
 	]
-	add-layer: function [spec [block!]][
-		insert next window/pane ret: layout/only bind spec self
+	add-layer: function [spec [object! block!]][
+		either object? spec [
+			insert ret: next window/pane spec
+		][
+			insert next window/pane ret: layout/only bind spec self
+		]
 		first ret
 	]
 	add-face: func [spec [block!]][
@@ -367,6 +375,11 @@ ctx: context [
 					]
 				] 
 			]
+			finder helper [
+				remove-each tool next window/pane [ 
+					all [tool/options tool/options/tool = type]
+				]
+			]
 		]
 		rest: find tools/pane face
 		if (index? rest) < (length? tools/pane) [
@@ -374,7 +387,7 @@ ctx: context [
 				tl/offset/y: tl/offset/y - face/size/y
 			]
 		]
-		console remove either type = 'finder [type][face]
+		console remove face ;either type = 'finder [type][face]
 	]
 	save-notes: func [content][
 		write notes-file content/text 
@@ -514,6 +527,9 @@ ctx: context [
 	tools-ctx/mark: skip tail lsp/draw -2 
 	figures: [circle ellipse box line]
 	colors: load %Paired.png
+	
+	;helper-ctx
+	rt: inspector: last-word: none
 	
 	set 'console func ['op [word!] what [object! word! block!] /with 'args /as type /local spec][
 		switch op [
@@ -985,41 +1001,89 @@ ctx: context [
 								] define-ctx
 							]
 							helper        [
+								system/view/silent?: yes
+								console-ctx/rt: add-layer [at 3x0 rich-text 252.252.252 loose options [tool: helper];make-face/spec 'rich-text
+									wrap with [
+										text: concat copy/part at term/lines term/top term/screen-cnt newline 
+										size: gui-console-ctx/win/size - 20 
+										font: gui-console-ctx/font
+										data: reduce [1x0 'backdrop silver]
+									] all-over on-over [/local [start end wrd txt]
+										start: any [find/tail/reverse at event/face/text offset-to-caret event/face event/offset wspar head start]
+										end: any [find start wspar tail start]
+										attempt/safer [txt: copy/part start (index? end) - (index? start)]
+										if last-word <> txt [
+											if attempt/safer [wrd: load txt] [
+												if path? wrd [
+													either value? first wrd [
+														if any-function? get first wrd [wrd: first wrd]
+													][
+														wrd: first wrd
+													]
+												]
+												inspector/text: help-string :wrd
+												last-word: txt
+											]
+										]
+										change face/data as-pair start: index? start (index? end) - start
+									] on-wheel [
+										gui-console-ctx/console/actors/on-wheel gui-console-ctx/console event
+										append clear face/text concat copy/part at term/lines term/top term/screen-cnt newline
+									]
+								]
 								add-tool [
 									panel options [tool: helper] [
 										text "Helper" 60
 										button "Console" [focus-console]
-										button "Close"   [close-tool face/parent]
+										button "Close"   [system/view/silent?: no close-tool face/parent]
 										return
-										text "Subject:" 50 drop-list data ["keys"] select 1
-										return
-										area 280 font tool-font %%{#"^M"  [exit-ask-loop] 
-#"^H"  [delete-text/backward ctrl?] 
-#"^~"  [delete-text/backward yes] 
-#"^-"  [unless empty? line [do-completion line char]] 
-left   [move-caret/event -1 event] 
-right  [move-caret/event 1 event] 
-up     [either ctrl? [scroll-lines 1] [fetch-history 'prev]] 
-down   [either ctrl? [scroll-lines -1] [fetch-history 'next]] 
-insert [if event/shift? [paste exit]] 
-delete [either event/shift? [cut] [delete-text ctrl?]] 
-#"^A" home [
-       if shift? [select-text 0 - pos] pos: 0
-] 
-#"^E" end  [
-       if shift? [select-text (length? line) - pos] 
-       pos: length? line
-] 
-#"^C"  [copy-selection exit] 
-#"^V"  [paste exit] 
-#"^X"  [cut] 
-#"^Z"  [undo undo-stack redo-stack] 
-#"^Y"  [undo redo-stack undo-stack] 
-#"^["  [exit-ask-loop/escape] 
-#"^L"  [clean] 
-#"^K"  [clear line pos: 0]
-}%%
+										;text "Subject:" 50 drop-list data ["keys" "inspect"] select 1
+										tab-panel 280x420 [
+											"inspect" [
+												inspector: box 260x400 top left font tool-font
+												react [face/parent/size: tools/size - 40 face/size: face/parent/size]
+											]
+											"keys" [
+												box 260x400 top left font tool-font %%{#"^M"  [exit-ask-loop] 
+	#"^H"  [delete-text/backward ctrl?] 
+	#"^~"  [delete-text/backward yes] 
+	#"^-"  [unless empty? line [do-completion line char]] 
+	left   [move-caret/event -1 event] 
+	right  [move-caret/event 1 event] 
+	up     [either ctrl? [scroll-lines 1] [fetch-history 'prev]] 
+	down   [either ctrl? [scroll-lines -1] [fetch-history 'next]] 
+	insert [if event/shift? [paste exit]] 
+	delete [either event/shift? [cut] [delete-text ctrl?]] 
+	#"^A" home [
+		   if shift? [select-text 0 - pos] pos: 0
+	] 
+	#"^E" end  [
+		   if shift? [select-text (length? line) - pos] 
+		   pos: length? line
+	] 
+	#"^C"  [copy-selection exit] 
+	#"^V"  [paste exit] 
+	#"^X"  [cut] 
+	#"^Z"  [undo undo-stack redo-stack] 
+	#"^Y"  [undo redo-stack undo-stack] 
+	#"^["  [exit-ask-loop/escape] 
+	#"^L"  [clean] 
+	#"^K"  [clear line pos: 0]
+	}%% react [face/parent/size: tools/size - 40 face/size: face/parent/size]]
+										
+										]
 										react [face/size/x: tools/size/x - 20]
+										on-change [
+											either "inspect" = pick face/data event/picked bind [
+												system/view/silent?: yes
+												rt/text: concat copy/part at term/lines term/top term/screen-cnt newline
+												rt/size: as-pair gui-console-ctx/win/size/x - 20 pick size-text rt 2
+												rt/visible?: yes
+											] console-ctx bind [
+												system/view/silent?: no
+												rt/visible?: no
+											] console-ctx
+										]
 										at 10x0 separator 280x10 loose 
 											react [
 												face/offset/y: face/parent/size/y - 10
@@ -1181,14 +1245,7 @@ delete [either event/shift? [cut] [delete-text ctrl?]]
 										self/notes-visible?: no
 										notes-face: none
 									]
-									finder [
-										remove-each tool next window/pane [ 
-											all [tool/options tool/options/tool = 'finder]
-										]
-									]
-									live [
-										system/view/silent?: no
-									]
+									live [system/view/silent?: no]
 								]
 								remove-each tool tools/pane [
 									tool/options/tool = what
