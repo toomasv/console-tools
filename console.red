@@ -1061,9 +1061,10 @@ ctx: context [
 										hlp-txt: text "Helper" 60
 										button "Console" [focus-console]
 										button "Close"   [system/view/silent?: no close-tool face/parent]
+										button "Note"    [add-note select first select pick helper-tab/pane helper-tab/selected 'pane 'text]
 										return
 										;text "Subject:" 50 drop-list data ["keys" "inspect"] select 1
-										tab-panel 280x420 [
+										helper-tab: tab-panel 280x420 [
 											"inspect" [
 												inspector: box 260x400 top left wrap font tool-font
 												react [face/parent/size: tools/size - 40 face/size: face/parent/size]
