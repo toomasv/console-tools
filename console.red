@@ -1421,7 +1421,8 @@ ctx: context [
 		change/only menu-body 'switch/default
 		append/only menu-body [
 			either 'live = event/picked [
-				live-face: add-face [base loose] 
+				pos: window/size / 2 - 40x40
+				live-face: box/with [gray]
 				live 'live-face
 			][
 				do event/picked
