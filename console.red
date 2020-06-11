@@ -375,12 +375,10 @@ ctx: context [
 					]
 				] 
 			]
-			finder helper [
-				remove-each tool next window/pane [ 
-					all [tool/options tool/options/tool = type]
-				]
-			]
 		]
+		remove-each tool next window/pane [ 
+			all [tool/options tool/options/tool = type]
+		]	
 		rest: find tools/pane face
 		if (index? rest) < (length? tools/pane) [
 			foreach tl next rest [
@@ -1407,4 +1405,29 @@ ctx: context [
 	set 'define   does [console add 'define]
 	set 'helper   does [console add 'helper]
 	set 'styles   does [console add 'styles]
+	if 'switch = first menu-body: body-of :window/actors/on-menu [
+		append window/menu [
+			"Tools" [
+				"Notes"    notes 
+				"History"  history 
+				"Finder"   finder 
+				"Live"     live 
+				"Reminder" reminder 
+				"Define"   define 
+				"Helper"   helper
+				"Styles"   styles
+			]
+		]
+		change/only menu-body 'switch/default
+		append/only menu-body [
+			either 'live = event/picked [
+				live-face: add-face [base loose] 
+				live 'live-face
+			][
+				do event/picked
+			]
+		]
+		window/actors/on-menu: func spec-of :window/actors/on-menu bind menu-body gui-console-ctx
+	]
+	
 ]
