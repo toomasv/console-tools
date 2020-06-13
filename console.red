@@ -5,6 +5,7 @@ Red [
 ]
 clear-reactions
 #include %concat.red
+#include %info.red
 ctx: context [
 	console-ctx: self
 	tool-font: make font! [size: 10 name: "Consolas"]
@@ -139,10 +140,6 @@ ctx: context [
 	loaded:         none
 	bsp: lsp: content: none
 	hour: minute: sec: dial: none
-	ws: charset " ^-^/]"
-	ws1: charset " ^-^/])"
-	par: charset {[]();}
-	wspar: union ws par
 	
 	;adapted from @rebolek's `where`
 	definitions: clear []
@@ -529,6 +526,129 @@ ctx: context [
 	;helper-ctx
 	rt: inspector: last-word: none
 	
+	sp: charset " ^-"
+	ws: charset " ^/^-"
+	opn: charset "[("
+	cls: charset ")]"
+	cls2: union ws cls
+	brc: union opn cls
+	brc2: union brc charset "{}"
+	skp: union ws brc
+	skp2: union skp charset "/"
+	skp3: union skp2 charset ":"
+	skp4: union skp3 charset "'"
+	com-check: charset {^/;}
+	skip-chars: charset "#$&"
+	opn-brc: charset "{[(^"" ;"
+	opp: "[][()({}{^"^""
+	delim: union ws charset "[(:'{"
+
+	par: charset {[]();}
+	wspar: union ws par
+
+
+	left-scope: func [str [string!] /local i [integer!]][i: 0
+		until [str: back str not find/match str ws]
+		either #")" = str/1 [find/reverse str "("][find/reverse/tail str skp]
+	]
+	arg-scope: func [str [string!] type [none! block! datatype! typeset! word! lit-word! get-word!] /left /right /arg /local el el2 s0 s1 s2 i2 _][
+		either left [
+			s1: left-scope str
+			s0: left-scope s1
+			el: load/next s0 '_
+			if op? attempt [get/any el][s1: arg-scope/left s0 none]
+		][
+			;probe str
+			if el: attempt/safer [load/next str 's1][
+				;probe el
+				el2: either right [none][attempt/safer [load/next s1 's2]]
+				either all [word? el2 op? attempt/safer [get/any el2]][
+					s1: arg-scope s2 none
+				][
+					either find/match str "#include " [
+						s1: arg-scope s1 none
+					][
+						;probe reduce [el arg type type? type]
+						if any [all [arg word? type] not arg][
+							switch type?/word el [
+								set-word! set-path! [s1: arg-scope s1 none]
+								word! [if any-function? get/any el [s1: scope str]]
+								path! [
+									case [
+										any-function? get/any first el [s1: scope str]
+										get-function el [s1: scope str]
+									]
+									;if any [
+									;	any-function? get/any first el
+									;	get-function el
+									;][s1: scope str]
+								]
+							]
+						]
+					]
+				]
+			]
+		]
+		s1
+	]
+	scope: func [str [string!] /color col /local fn fnc inf clr arg i1 i2 s1 s2 multi-line?][
+		fn: load/next str 's1
+		clr: any [col snow - 16]
+		case [
+			all [word? fn any-function? get/any :fn] [fnc: fn]
+			all [path? fn fn1: get-function fn 1 = length? fn1] [fnc: fn/1]
+			all [path? fn fn1] [fnc: fn1]
+			'else [fnc: none]
+		]
+		either fnc [
+			inf: info :fnc
+			 
+			either op! = inf/type [
+				s0: arg-scope/left str none
+				i1: index? s0
+				i2: -1 + index? str
+				repend rt/data [as-pair i1 i2 - i1 'underline clr]
+				i2: index? s2: arg-scope/right s1 none
+				while [find ws s1/1][s1: next s1]
+				i1: index? s1
+				repend rt/data [as-pair i1 i2 - i1 'underline clr]
+			][
+				foreach arg inf/arg-names [
+					either attempt [i2: index? s2: arg-scope/arg s1 arg][
+						while [find ws s1/1][s1: next s1]
+						i1: index? s1
+						multi-line?: to logic! find/part s1 newline i2 - i1
+						repend rt/data [as-pair i1 i2 - i1 pick [backdrop underline] multi-line? clr] ;s2/-1 = #"]"
+						s1: :s2
+					][rt/data/3: red]
+				]
+			]
+			if all [path? fn any [word? fnc (length? fn) > (length? fnc)]][
+				foreach ref either word? fnc [next fn][skip fn length? fnc] [
+					if 0 < length? refs: inf/refinements/:ref [
+						foreach type extract next refs 2 [
+							i2: index? s2: arg-scope/arg s1 arg
+							while [find ws s1/1][s1: next s1]
+							i1: index? s1
+							repend rt/data [as-pair i1 i2 - i1 'underline clr]
+							s1: :s2
+						]
+					]
+				]
+			]
+			show rt
+			s1
+		][
+			if find [set-word! set-path!] type?/word fn [
+				i2: index? s2: arg-scope s1 none
+				while [find ws s1/1][s1: next s1]
+				i1: index? s1
+				repend rt/data [as-pair i1 i2 - i1 'underline clr]
+				s1: :s2
+			]
+		]
+	]
+
 	set 'console func ['op [word!] what [object! word! block!] /with 'args /as type /local spec][
 		switch op [
 			add [
@@ -899,8 +1019,7 @@ ctx: context [
 								if with bind [
 									system/view/silent?: yes
 									target: get args
-									either object? target [
-										live-type?: 'object
+									either object? :target [
 										args1: collect [
 											foreach [key val] body-of target [
 												switch/default key [
@@ -920,26 +1039,31 @@ ctx: context [
 										def: case [word? args [to set-word! args] path? args [to set-path! args]]
 										args1: get args
 									]
-									act: compose/deep either live-type? = 'object [[
-										if attempt/safer [loaded: load face/text][
-											foreach [key val] loaded [
-												attempt/safer [
-													key: to-word key
-													target/:key: case [
-														paren? :val [
-															do bind to-block val console-ctx
+									act: compose/deep case [
+										object? :target [[
+											if attempt/safer [loaded: load face/text][
+												foreach [key val] loaded [
+													attempt/safer [
+														key: to-word key
+														target/:key: case [
+															paren? :val [
+																do bind to-block val console-ctx
+															]
+															set-word? :val [none]
+															true [:val]
 														]
-														set-word? :val [none]
-														true [:val]
 													]
 												]
 											]
-										]
-									]][[
-										loaded: load face/text
-										attempt/safer [(def) either block? loaded [compose loaded][:loaded]]
-										term/refresh
-									]]
+										]]
+										string? :target [[term/refresh]]
+										;[[system/view/auto-sync?: off foreach win term/windows [probe win/pane/1/text show win] system/view/auto-sync?: on]];
+										true [[
+											loaded: load face/text
+											attempt/safer [(def) either block? loaded [compose loaded][:loaded]]
+											term/refresh
+										]]
+									]
 									add-tool compose/deep/only [
 										panel options [tool: live] [
 											text "Live" 60
@@ -1000,7 +1124,8 @@ ctx: context [
 							]
 							helper        [
 								system/view/silent?: yes
-								console-ctx/rt: add-layer [at 3x0 rich-text 252.252.252 loose options [tool: helper]
+								console-ctx/rt: add-layer [
+									at 3x0 rich-text 252.252.252 options [tool: helper]
 									wrap all-over with [
 										text: concat copy/part at term/lines term/top term/screen-cnt newline 
 										size: gui-console-ctx/win/size - 20 
@@ -1009,15 +1134,25 @@ ctx: context [
 										actors: object [
 											fix: none
 											on-over: func [face event /local start end wrd txt ret][
-												if not fix [
+												either fix [
+													if event/down? [ ;Prolong selection TBD
+														
+													]
+												][
 													start: any [
 														find/tail/reverse at event/face/text offset-to-caret event/face event/offset wspar 
 														head event/face/text
 													]
 													end: any [find start wspar tail start]
 													attempt/safer [txt: copy/part start (index? end) - (index? start)]
-													if last-word <> txt [
+													change face/data as-pair strt: index? start (index? end) - strt
+													if last-word <> face/data/1 [
+														face/data/3: silver
+														clear at face/data 4
 														if attempt/safer [wrd: load txt] [
+															if any [fn: info :wrd set-word? :wrd set-path? :wrd] [
+																scope start
+															]
 															if path? wrd [
 																either value? first wrd [
 																	either any-function? get first wrd [
@@ -1042,10 +1177,9 @@ ctx: context [
 															][
 																inspector/text: copy/part help-string :wrd 2000
 															]
-															last-word: txt
+															last-word: first face/data
 														]
 													]
-													change face/data as-pair start: index? start (index? end) - start
 												]
 											]
 											on-wheel: func [face event][
@@ -1053,11 +1187,12 @@ ctx: context [
 												append clear face/text concat copy/part at term/lines term/top term/screen-cnt newline
 											]
 											on-down: func [face event][hlp-txt/color: either fix: not fix [silver][snow]]
+											on-up: func [face event][]
 											on-dbl-click: func [face event][
 												add-note select first select pick helper-tab/pane helper-tab/selected 'pane 'text
 											]
 										]
-									]
+									] react [face/size/x: window/size/x - 20]
 								]
 								add-tool [
 									panel options [tool: helper] [
@@ -1430,9 +1565,9 @@ ctx: context [
 	set 'notes    does [console add 'notes]
 	set 'history  does [console add 'history]
 	set 'finder   does [console add 'finder]
-	set 'live     func [what][console/with add 'live :what]
+	set 'live     func [what] [console/with add 'live :what]
 	set 'reminder does [console add 'reminder]
-	set 'remind   func [spec [block!]][write %reminds.txt new-line/all/skip sort/skip append reminds/tasks spec 2 true 2]
+	set 'remind   func [spec [block!]] [write %reminds.txt new-line/all/skip sort/skip append reminds/tasks spec 2 true 2]
 	set 'define   does [console add 'define]
 	set 'helper   does [console add 'helper]
 	set 'styles   does [console add 'styles]
