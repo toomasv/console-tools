@@ -1,7 +1,7 @@
 Red [
 	Description: "Suite of console tools"
 	Author: "Toomas Vooglaid"
-	Last: 11-Jun-2020
+	Date: "June 2020"
 ]
 clear-reactions
 #include %concat.red
@@ -1053,6 +1053,9 @@ ctx: context [
 												append clear face/text concat copy/part at term/lines term/top term/screen-cnt newline
 											]
 											on-down: func [face event][hlp-txt/color: either fix: not fix [silver][snow]]
+											on-dbl-click: func [face event][
+												add-note select first select pick helper-tab/pane helper-tab/selected 'pane 'text
+											]
 										]
 									]
 								]
@@ -1060,8 +1063,8 @@ ctx: context [
 									panel options [tool: helper] [
 										hlp-txt: text "Helper" 60
 										button "Console" [focus-console]
-										button "Close"   [system/view/silent?: no close-tool face/parent]
 										button "Note"    [add-note select first select pick helper-tab/pane helper-tab/selected 'pane 'text]
+										button "Close"   [system/view/silent?: no close-tool face/parent]
 										return
 										;text "Subject:" 50 drop-list data ["keys" "inspect"] select 1
 										helper-tab: tab-panel 280x420 [
