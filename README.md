@@ -25,7 +25,7 @@ reminder     ;experiments with reminder (24 hour clock), e.g.:
              ;remind [9:00 "Breakfast" 10:00 "Meeting with X" 14:30 "Lunch at Y"]
 history      ;quick selection from console's history (with contextual menu) into notes or caret (click)
 define       ;adaptation of @rebolek's `where`
-helper       ;inspector showing help-string on hovering and console hot-keys so far
+helper       ;inspector showing help-string (and args) on hovering and console hot-keys so far
 styles       ;play with console styling options
 ```
 
