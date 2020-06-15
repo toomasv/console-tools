@@ -476,7 +476,38 @@ ctx: context [
 		mark/2/y: mark/1/y + 20
 	] tools-ctx
 	append window/pane layout/only bind compose [
-		at (pos: as-pair sz/x - toolbox - 17 0) tools: panel 300x0 hidden []
+		at (pos: as-pair sz/x - toolbox - 17 0) tools: panel 300x0 hidden
+			with [menu: ["Detach" detach "Attach" attach]]
+			on-menu [
+				switch event/picked [
+					detach [
+						tools-lay: layout compose [size (tools/size)] 
+						append tools-lay/pane take/part found: find window/pane tools 3
+						clear found 
+						face/offset: 0x0 
+						scr/offset: as-pair tools-lay/size/x - 10
+						scr/size/y: tools-lay/size/y
+						view/flags/options tools-lay 'resize [
+							text: "Console-tools" 
+							actors: object [
+								on-resizing: func [face event][
+									tools/size/x: face/size/x - 10
+									scr/size/y: face/size/y
+								]
+							]
+						]
+					]
+					attach [
+						tools-lay/visible?: no
+						append tail window/pane take/part tools-lay/pane 3
+						append window/pane lsp
+						tools/offset/x: lsp/offset/x: window/size/x - tools/size/x - 17
+						scr/offset: as-pair window/size/x - 27 0
+						scr/size/y: window/size/y
+						unview tools-lay
+					]
+				]
+			] []
 			react later [
 				tools/offset: as-pair lsp/offset/x 0 
 			]
@@ -513,6 +544,7 @@ ctx: context [
 				]
 				show [face tools]
 				system/view/auto-sync?: on
+				face/actors/on-down face none
 				'stop
 			]
 			react later [
@@ -523,11 +555,9 @@ ctx: context [
 	figures: [circle ellipse box line]
 	colors: load %Paired.png
 	
-	;helper-ctx
-	rt: inspector: last-word: none
-	
 	sp: charset " ^-"
 	ws: charset " ^/^-"
+	nonws: negate ws
 	opn: charset "[("
 	cls: charset ")]"
 	cls2: union ws cls
@@ -546,109 +576,169 @@ ctx: context [
 	par: charset {[]();}
 	wspar: union ws par
 
-
-	left-scope: func [str [string!] /local i [integer!]][i: 0
-		until [str: back str not find/match str ws]
-		either #")" = str/1 [find/reverse str "("][find/reverse/tail str skp]
-	]
-	arg-scope: func [str [string!] type [none! block! datatype! typeset! word! lit-word! get-word!] /left /right /arg /local el el2 s0 s1 s2 i2 _][
-		either left [
-			s1: left-scope str
-			s0: left-scope s1
-			el: load/next s0 '_
-			if op? attempt [get/any el][s1: arg-scope/left s0 none]
-		][
-			;probe str
-			if el: attempt/safer [load/next str 's1][
-				;probe el
-				el2: either right [none][attempt/safer [load/next s1 's2]]
-				either all [word? el2 op? attempt/safer [get/any el2]][
-					s1: arg-scope s2 none
-				][
-					either find/match str "#include " [
-						s1: arg-scope s1 none
+	helper-ctx: context [
+		rt: inspector: last-word: colors: clrs: cfg: col-num: style: scheme: sty: lh: none
+		
+		line-points: func [str i1 i2 /local rest next-rest out first-line len stop pos start][
+			pos: 1000
+			out: clear []
+			if 1 < len: length? first-line: trim/tail copy/part str start: next-rest: rest: find/tail str newline [
+				repend out ['line lh + caret-to-offset rt i1    lh + caret-to-offset rt i1 + len]
+			]
+			;while [
+			;	next-rest: find/tail/part rest newline i2 - index? rest
+			;][
+			;	stop: find rest nonws
+			;	pos:  min pos (index? stop) - (index? rest)
+			;	rest: next-rest
+			;]
+			;repend out ['line start: -3x0 + caret-to-offset rt (index? start) + pos   as-pair start/x second caret-to-offset rt index? rest]
+			until [
+				rest: next-rest
+				stop: find rest nonws
+				pos: min pos (index? stop) - (index? rest)
+				not next-rest: find/tail/part rest newline i2 - index? rest
+			]
+			repend out ['line start: caret-to-offset rt (index? start) + pos   as-pair start/x second caret-to-offset rt index? rest];lh/y + 
+			if 1 < len: length? trim/tail copy/part last-line: find rest nonws len: i2 - i1: index? last-line [
+				repend out ['line lh + caret-to-offset rt i1    lh + caret-to-offset rt 12];i1 + len]
+			]
+			out
+		]
+		stylize: func [str i1 i2 clr][
+			switch sty [
+				backdrop [repend rt/data [as-pair i1 i2 - i1 sty clr]]
+				line [
+					;either all [clr/1 = clr/2 clr/2 = clr/3][
+					;	sty: pick [backdrop underline] to logic! find/part str newline len ; backdrop for multi-line blocks
+					;	repend rt/data [as-pair i1 i2 - i1 sty clr]
+					;][
+						either multiline?: find/part str newline i2 - i1 [
+							append rt/draw append compose [pen (clr)] line-points str i1 i2
+							;repend rt/draw ['pen clr 'line as-pair 2 second caret-to-offset rt i1 as-pair 2 lh/y + second caret-to-offset rt i2]
+						][
+							repend rt/draw ['pen clr 'line lh + caret-to-offset rt i1 lh + caret-to-offset rt i2]
+						]
+						rt/draw: rt/draw
+					;] 
+				]
+				text [repend rt/data [as-pair i1 i2 - i1 clr]]
+			]
+		]
+		get-color: func [n][
+			either cfg = 1 [snow - (n * 16)][pick colors as-pair n * cfg - (cfg / 2) 10]
+		]
+		set-color: func [s1 arg n render /local clr i1 i2 s2][ 
+			clr: get-color n
+			either attempt [i2: index? s2: arg-scope s1 arg][
+				while [find ws s1/1][s1: next s1]
+				i1: index? s1
+				if render [stylize s1 i1 i2 clr]
+				s1: :s2
+			][rt/data/3: red]
+		]
+		left-scope: func [str [string!] /local i [integer!]][i: 0
+			until [str: back str not find/match str ws]
+			either #")" = str/1 [find/reverse str "("][find/reverse/tail str skp]
+		]
+		arg-scope: func [
+			str [string!] 
+			arg [none! word! lit-word! get-word!] ;block! datatype! typeset!
+			/left /right
+			/local el el2 s0 s1 s2 i2 _  
+		][;probe reduce [copy/part str 20 arg]
+			either left [
+				s1: left-scope str
+				s0: left-scope s1
+				el: attempt/safer [load/next s0 '_]
+				if op? attempt [get/any el][s1: arg-scope/left s0 none]
+			][
+				;probe str
+				if el: attempt/safer [load/next str 's1][
+					;probe el
+					el2: either right [none][attempt/safer [load/next s1 's2]]
+					either all [word? el2 op? attempt/safer [get/any el2]][
+						s1: arg-scope s2 none
 					][
-						;probe reduce [el arg type type? type]
-						if any [all [arg word? type] not arg][
-							switch type?/word el [
-								set-word! set-path! [s1: arg-scope s1 none]
-								word! [if any-function? get/any el [s1: scope str]]
-								path! [
-									case [
-										any-function? get/any first el [s1: scope str]
-										get-function el [s1: scope str]
+						either find/match str "#include " [
+							s1: arg-scope s1 none
+						][
+							if any [not arg word? arg][; don't go for lit-word and get-word args
+								switch type?/word el [
+									set-word! set-path! [s1: arg-scope s1 none]
+									word! [if any-function? get/any el [s1: scope str false]]
+									path! [
+										case [
+											any-function? get/any first el [s1: scope str false]
+											get-function el [s1: scope str false]
+										]
+										;if any [
+										;	any-function? get/any first el
+										;	get-function el
+										;][s1: scope str]
 									]
-									;if any [
-									;	any-function? get/any first el
-									;	get-function el
-									;][s1: scope str]
 								]
 							]
 						]
 					]
 				]
 			]
+			s1
 		]
-		s1
-	]
-	scope: func [str [string!] /color col /local fn fnc inf clr arg i1 i2 s1 s2 multi-line?][
-		fn: load/next str 's1
-		clr: any [col snow - 16]
-		case [
-			all [word? fn any-function? get/any :fn] [fnc: fn]
-			all [path? fn fn1: get-function fn 1 = length? fn1] [fnc: fn/1]
-			all [path? fn fn1] [fnc: fn1]
-			'else [fnc: none]
-		]
-		either fnc [
-			inf: info :fnc
-			 
-			either op! = inf/type [
-				s0: arg-scope/left str none
-				i1: index? s0
-				i2: -1 + index? str
-				repend rt/data [as-pair i1 i2 - i1 'underline clr]
-				i2: index? s2: arg-scope/right s1 none
-				while [find ws s1/1][s1: next s1]
-				i1: index? s1
-				repend rt/data [as-pair i1 i2 - i1 'underline clr]
-			][
-				foreach arg inf/arg-names [
-					either attempt [i2: index? s2: arg-scope/arg s1 arg][
-						while [find ws s1/1][s1: next s1]
-						i1: index? s1
-						multi-line?: to logic! find/part s1 newline i2 - i1
-						repend rt/data [as-pair i1 i2 - i1 pick [backdrop underline] multi-line? clr] ;s2/-1 = #"]"
-						s1: :s2
-					][rt/data/3: red]
-				]
+		scope: func [
+			str [string!] 
+			render [logic!]
+			/color col 
+			/local fn fnc inf clr arg i1 i2 s0 s1 s2 multi-line? n 
+		][
+			fn: load/next str 's1
+			n: 0
+			sty: pick style/data style/selected - 1 * 2 + 2
+			case [
+				all [word? fn any-function? get/any :fn] [fnc: fn]
+				all [path? fn fn1: get-function fn 1 = length? fn1] [fnc: fn/1]
+				all [path? fn fn1] [fnc: fn1]
+				'else [fnc: none]
 			]
-			if all [path? fn any [word? fnc (length? fn) > (length? fnc)]][
-				foreach ref either word? fnc [next fn][skip fn length? fnc] [
-					if 0 < length? refs: inf/refinements/:ref [
-						foreach type extract next refs 2 [
-							i2: index? s2: arg-scope/arg s1 arg
-							while [find ws s1/1][s1: next s1]
-							i1: index? s1
-							repend rt/data [as-pair i1 i2 - i1 'underline clr]
-							s1: :s2
+			either fnc [
+				inf: info :fnc
+				 
+				either op! = inf/type [
+					i2: -1 + index? str
+					clr: get-color n: n + 1
+					s0: arg-scope/left str none
+					i1: index? s0
+					if render [stylize s0 i1 i2 clr]
+					i2: index? s2: arg-scope/right s1 none 
+					while [all [s1/1 find ws s1/1]][s1: next s1]
+					i1: index? s1
+					clr: get-color n: n + 1
+					s0: arg-scope/left str none
+					if render [stylize s0 i1 i2 clr]
+				][
+					foreach arg inf/arg-names [
+						s1: set-color s1 arg n: n + 1 render
+					]
+				]
+				if all [path? fn any [word? fnc (length? fn) > (length? fnc)]][
+					foreach ref either word? fnc [next fn][skip fn length? fnc] [
+						if 0 < length? refs: inf/refinements/:ref [
+							foreach arg extract inf/refinements/:ref 2 [
+								s1: set-color s1 arg n: n + 1 render
+							]
 						]
 					]
 				]
-			]
-			show rt
-			s1
-		][
-			if find [set-word! set-path!] type?/word fn [
-				i2: index? s2: arg-scope s1 none
-				while [find ws s1/1][s1: next s1]
-				i1: index? s1
-				repend rt/data [as-pair i1 i2 - i1 'underline clr]
-				s1: :s2
+				show rt
+				s1
+			][
+				arg: none
+				if find [set-word! set-path!] type?/word fn [
+					s1: set-color s1 arg n: n + 1 render
+				]
 			]
 		]
 	]
-
 	set 'console func ['op [word!] what [object! word! block!] /with 'args /as type /local spec][
 		switch op [
 			add [
@@ -1124,11 +1214,11 @@ ctx: context [
 							]
 							helper        [
 								system/view/silent?: yes
-								console-ctx/rt: add-layer [
-									at 3x0 rich-text 252.252.252 options [tool: helper]
+								add-layer bind [
+									at 3x0 rt: rich-text 252.252.252 options [tool: helper] draw []
 									wrap all-over with [
-										text: concat copy/part at term/lines term/top term/screen-cnt newline 
-										size: gui-console-ctx/win/size - 20 
+										text: concat copy/part at term/lines term/top tail term/lines newline ;screen-cnt
+										size: window/size - 20 
 										font: gui-console-ctx/font
 										data: reduce [1x0 'backdrop silver]
 										actors: object [
@@ -1149,9 +1239,10 @@ ctx: context [
 													if last-word <> face/data/1 [
 														face/data/3: silver
 														clear at face/data 4
+														clear at face/draw 3
 														if attempt/safer [wrd: load txt] [
 															if any [fn: info :wrd set-word? :wrd set-path? :wrd] [
-																scope start
+																scope start true
 															]
 															if path? wrd [
 																either value? first wrd [
@@ -1183,8 +1274,10 @@ ctx: context [
 												]
 											]
 											on-wheel: func [face event][
+												clear at face/data 4 face/data/1: 0x0 clear at face/draw 3
 												gui-console-ctx/console/actors/on-wheel gui-console-ctx/console event
-												append clear face/text concat copy/part at term/lines term/top term/screen-cnt newline
+												append clear face/text concat copy/part at term/lines term/top tail term/lines newline ;screen-cnt
+												face/size: as-pair window/size/x - 20 second size-text face
 											]
 											on-down: func [face event][hlp-txt/color: either fix: not fix [silver][snow]]
 											on-up: func [face event][]
@@ -1193,15 +1286,44 @@ ctx: context [
 											]
 										]
 									] react [face/size/x: window/size/x - 20]
-								]
-								add-tool [
+								] helper-ctx
+								add-tool bind [
 									panel options [tool: helper] [
 										hlp-txt: text "Helper" 60
 										button "Console" [focus-console]
 										button "Note"    [add-note select first select pick helper-tab/pane helper-tab/selected 'pane 'text]
 										button "Close"   [system/view/silent?: no close-tool face/parent]
 										return
-										;text "Subject:" 50 drop-list data ["keys" "inspect"] select 1
+										check "Show" 60 data #[true] on-change [if rt/visible?: face/data [
+											clear at rt/data 4
+											rt/data/1: 0x0
+											append clear rt/text concat copy/part at term/lines term/top term/screen-cnt newline
+										]]
+										style: drop-list data ["backdrop" backdrop "line" line "text" text] select 1
+										on-change [
+											switch face/selected [
+												1 [;backdrop
+													clear face/draw
+													colors: load %Pastel2.png
+													cfg: colors/size/x / 8
+												]
+												2 [;line
+													lh: as-pair 0 term/line-h
+													append rt/draw [line-width 2]
+													colors: load %Category10.png
+													cfg: colors/size/x / 10
+												]
+												3 [;text
+													clear face/draw
+													colors: load %Category10.png
+													cfg: colors/size/x / 10
+												]
+											]
+										]
+										on-created [
+											face/actors/on-change face none
+										]
+										return
 										helper-tab: tab-panel 280x420 [
 											"inspect" [
 												inspector: box 260x400 top left wrap font tool-font
@@ -1209,44 +1331,44 @@ ctx: context [
 											]
 											"keys" [
 												box 260x400 top left font tool-font %%{#"^M"  [exit-ask-loop] 
-	#"^H"  [delete-text/backward ctrl?] 
-	#"^~"  [delete-text/backward yes] 
-	#"^-"  [unless empty? line [do-completion line char]] 
-	left   [move-caret/event -1 event] 
-	right  [move-caret/event 1 event] 
-	up     [either ctrl? [scroll-lines 1] [fetch-history 'prev]] 
-	down   [either ctrl? [scroll-lines -1] [fetch-history 'next]] 
-	insert [if event/shift? [paste exit]] 
-	delete [either event/shift? [cut] [delete-text ctrl?]] 
-	#"^A" home [
-		   if shift? [select-text 0 - pos] pos: 0
-	] 
-	#"^E" end  [
-		   if shift? [select-text (length? line) - pos] 
-		   pos: length? line
-	] 
-	#"^C"  [copy-selection exit] 
-	#"^V"  [paste exit] 
-	#"^X"  [cut] 
-	#"^Z"  [undo undo-stack redo-stack] 
-	#"^Y"  [undo redo-stack undo-stack] 
-	#"^["  [exit-ask-loop/escape] 
-	#"^L"  [clean] 
-	#"^K"  [clear line pos: 0]
-	}%% react [face/parent/size: tools/size - 40 face/size: face/parent/size]]
+#"^H"  [delete-text/backward ctrl?] 
+#"^~"  [delete-text/backward yes] 
+#"^-"  [unless empty? line [do-completion line char]] 
+left   [move-caret/event -1 event] 
+right  [move-caret/event 1 event] 
+up     [either ctrl? [scroll-lines 1] [fetch-history 'prev]] 
+down   [either ctrl? [scroll-lines -1] [fetch-history 'next]] 
+insert [if event/shift? [paste exit]] 
+delete [either event/shift? [cut] [delete-text ctrl?]] 
+#"^A" home [
+	   if shift? [select-text 0 - pos] pos: 0
+] 
+#"^E" end  [
+	   if shift? [select-text (length? line) - pos] 
+	   pos: length? line
+] 
+#"^C"  [copy-selection exit] 
+#"^V"  [paste exit] 
+#"^X"  [cut] 
+#"^Z"  [undo undo-stack redo-stack] 
+#"^Y"  [undo redo-stack undo-stack] 
+#"^["  [exit-ask-loop/escape] 
+#"^L"  [clean] 
+#"^K"  [clear line pos: 0]
+}%% react [face/parent/size: tools/size - 40 face/size: face/parent/size]]
 										
 										]
 										react [face/size/x: tools/size/x - 20]
 										on-change [
-											either "inspect" = pick face/data event/picked bind [
+											either "inspect" = pick face/data event/picked [
 												system/view/silent?: yes
 												rt/text: concat copy/part at term/lines term/top term/screen-cnt newline
-												rt/size: as-pair gui-console-ctx/win/size/x - 20 pick size-text rt 2
+												rt/size: as-pair window/size/x - 20 pick size-text rt 2
 												rt/visible?: yes
-											] console-ctx bind [
+											] [
 												system/view/silent?: no
 												rt/visible?: no
-											] console-ctx
+											] 
 										]
 										at 10x0 separator 280x10 loose 
 											react [
@@ -1256,7 +1378,7 @@ ctx: context [
 												face/extra/mark/2/x: face/extra/mark/1/x + 20
 											]
 									]
-								]
+								] helper-ctx
 							]
 							styles        [
 								pan: clear at [origin 0x0] 3
