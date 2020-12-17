@@ -136,6 +136,7 @@ ctx: context [
 	toolbox: 300    ;default width of toolbox
 	window:         gui-console-ctx/win
 	term:           gui-console-ctx/terminal
+	cons:           system/console
 	sources:        %../source/red/
 	loaded:         none
 	bsp: lsp: content: none
@@ -507,6 +508,7 @@ ctx: context [
 						unview tools-lay
 					]
 				]
+				'done
 			] []
 			react later [
 				tools/offset: as-pair lsp/offset/x 0 
@@ -572,12 +574,15 @@ ctx: context [
 	opn-brc: charset "{[(^"" ;"
 	opp: "[][()({}{^"^""
 	delim: union ws charset "[(:'{"
+	
+	console-prompt: cons/prompt
+	console-result: cons/result
 
 	par: charset {[]();}
 	wspar: union ws par
 
 	helper-ctx: context [
-		rt: inspector: last-word: colors: clrs: cfg: col-num: style: scheme: sty: lh: none
+		rt: inspector: last-word: colors: clrs: cfg: col-num: style: scheme: sty: lh: curtop: watching?: look: watch: none
 		
 		line-points: func [str i1 i2 /local rest next-rest out first-line len stop pos start][
 			pos: 1000
@@ -605,22 +610,47 @@ ctx: context [
 			]
 			out
 		]
+		segments: func [str i1 i2 clr /local rest out len stop][
+			out: clear []
+			len: length? trim/tail copy/part str rest: find/tail str newline
+			repend out [as-pair i1 len 'backdrop clr]
+			until [
+				stop: find rest nonws
+				either rest: find/tail/part rest newline i2 - index? rest [
+					repend out [as-pair index? stop (index? rest) - (index? stop) - 1 'backdrop clr]
+				][
+					len: length? trim/tail copy/part stop i2 - index? stop
+					repend out [as-pair index? stop len 'backdrop clr]
+				]
+				not rest
+			]
+			out
+		]
 		stylize: func [str i1 i2 clr][
 			switch sty [
-				backdrop [repend rt/data [as-pair i1 i2 - i1 sty clr]]
+				;backdrop [repend rt/data [as-pair i1 i2 - i1 sty clr]] ;full block
+				backdrop [
+					either multiline?: find/part str newline i2 - i1 [  ;rugged block
+						append rt/data segments str i1 i2 clr
+					][
+						repend rt/data [as-pair i1 i2 - i1 sty clr]
+					]
+				]
 				line [
-					;either all [clr/1 = clr/2 clr/2 = clr/3][
-					;	sty: pick [backdrop underline] to logic! find/part str newline len ; backdrop for multi-line blocks
-					;	repend rt/data [as-pair i1 i2 - i1 sty clr]
-					;][
-						either multiline?: find/part str newline i2 - i1 [
-							append rt/draw append compose [pen (clr)] line-points str i1 i2
-							;repend rt/draw ['pen clr 'line as-pair 2 second caret-to-offset rt i1 as-pair 2 lh/y + second caret-to-offset rt i2]
-						][
-							repend rt/draw ['pen clr 'line lh + caret-to-offset rt i1 lh + caret-to-offset rt i2]
-						]
-						rt/draw: rt/draw
-					;] 
+					either multiline?: find/part str newline i2 - i1 [
+						append rt/draw append compose [pen (clr)] line-points str i1 i2
+					][
+						repend rt/draw ['pen clr 'line lh + caret-to-offset rt i1 lh + caret-to-offset rt i2]
+					]
+					rt/draw: rt/draw
+				]
+				hybrid [
+					either multiline?: find/part str newline i2 - i1 [
+						repend rt/data [as-pair i1 i2 - i1 'backdrop clr + 96]
+					][
+						repend rt/draw ['pen clr 'line lh + caret-to-offset rt i1 lh + caret-to-offset rt i2]
+					]
+					rt/draw: rt/draw
 				]
 				text [repend rt/data [as-pair i1 i2 - i1 clr]]
 			]
@@ -656,7 +686,7 @@ ctx: context [
 				;probe str
 				if el: attempt/safer [load/next str 's1][
 					;probe el
-					el2: either right [none][attempt/safer [load/next s1 's2]]
+					el2: either any [right parse s1 [any [#" " | #"^-"] newline ["==" | ">>"] (e: tail s1) :e]] [none][attempt/safer [load/next s1 's2]]
 					either all [word? el2 op? attempt/safer [get/any el2]][
 						s1: arg-scope s2 none
 					][
@@ -691,6 +721,7 @@ ctx: context [
 			/color col 
 			/local fn fnc inf clr arg i1 i2 s0 s1 s2 multi-line? n 
 		][
+			if all [any [find/match str "==" find/match str ">>"] str/-1 = newline][return none]
 			fn: load/next str 's1
 			n: 0
 			sty: pick style/data style/selected - 1 * 2 + 2
@@ -738,6 +769,100 @@ ctx: context [
 				]
 			]
 		]
+		is-string?: func [start][find "^"{" start/1] 
+		end-of-string: function [start][
+			n: 0
+			rule: switch start/1 [
+				#"^"" [[#"^""
+					some [
+					  [#"^/" | end start] e: (cause-error 'user 'message rejoin ["Invalid string " copy/part start e]) 
+					| {"} e: (s: tail start) :s ;"
+					| skip
+					]
+				]]
+				#"{" [[
+					some [
+					  ["^^{" | "^^}"]
+					| #"{" (n: n + 1)
+					| #"}" (n: n - 1) opt [if (n = 0) e: (s: tail start) :s]
+					| skip
+					]
+				]]
+			]
+			parse start rule
+			e
+		]
+		;--------------
+		comment {
+		make-transparent: function [img alpha][
+			tr: copy at enbase/base to-binary alpha 16 7
+			append/dup tr tr to-integer log-2 length? img
+			append tr copy/part tr 2 * (length? img) - length? tr
+			make image! reduce [img/size img/rgb debase/base tr 16]
+		]
+		
+		screen_size: make-transparent make image! window/size - 20x0 255
+		drag: .8
+		max_age: 3.0
+		particles: copy []
+		random/seed now/time/precise
+		draw_blk: none
+		i: none
+
+		explode: func [xy speed /local angle radius][
+			particle_color: 255.255.255.0 - random 128.128.128.0
+			speed: 1 + (-0.5 + random 1.0) * speed
+			loop 50 + random 100 [
+				append particles reduce [
+					xy/x
+					xy/y
+					speed * (radius: (random 1.0) ** .5) * sin (angle: random 2 * pi)
+					speed * radius * cos angle
+					random max_age
+					particle_color
+				]
+			]
+		]
+
+		draw_screen: func [/local xy][
+			draw_blk: compose [fill-pen 255.255.255.100 box 0x0 (window/size - 20x0)]
+			foreach [x y vx vy age part_col] particles [
+				xy: to-pair reduce [x y]
+				append draw_blk compose [
+					pen (pc: (part_col - (random 32.32.32.32) * (age / max_age)))
+					fill-pen (pc)
+					circle (xy) ((random 2) * (age / max_age))
+				]
+			]
+			draw screen_size draw_blk
+		]
+
+		update: func [dt /local particle][
+			new_particles: copy []
+			drag: drag ** dt
+			foreach [x y vx vy age part_col] particles [
+				if positive? age [
+					vx: vx * drag
+					vy: vy * drag
+					particle: reduce [
+						x + vx
+						y + vy
+						vx
+						vy
+						age - dt
+						part_col
+					]
+					append new_particles particle
+				]
+			]
+			particles: new_particles
+		]
+
+		explode random window/size - 20x0 1.5
+		period: .01
+		speed: 1.5
+		}
+		
 	]
 	set 'console func ['op [word!] what [object! word! block!] /with 'args /as type /local spec][
 		switch op [
@@ -796,7 +921,7 @@ ctx: context [
 										button "Close"   [close-tool face/parent]
 										text "Sel:" 30 selection: text "1" extra []
 										return
-										list: text-list 280x400 font tool-font focus data system/console/history extra 1 select 1
+										list: text-list 280x400 font tool-font focus data cons/history extra 1 select 1
 										with [
 											menu: [
 												"Note"   note
@@ -810,7 +935,7 @@ ctx: context [
 												note   [add-lines selection/extra]
 												edit   [unview append clear term/line line focus-console]
 												;NB! deleting history gets out of sync with terminal/lines??
-												;delete [remove-lines selection/extra];remove at system/console/history face/selected]
+												;delete [remove-lines selection/extra];remove at console/history face/selected]
 											]
 										]
 										on-down [
@@ -1214,78 +1339,353 @@ ctx: context [
 							]
 							helper        [
 								system/view/silent?: yes
-								add-layer bind [
-									at 3x0 rt: rich-text 252.252.252 options [tool: helper] draw []
+								;system/view/auto-sync?: off
+								gui-console-ctx/console/actors/on-scroll: func [face [object!] event [event!]] bind bind [
+									terminal/scroll event
+									rt/actors/scroll rt event
+								] gui-console-ctx helper-ctx
+								gui-console-ctx/console/actors/on-wheel: func [face [object!] event [event!]] bind bind [
+									either event/ctrl? [
+										terminal/zoom event
+									] [
+										terminal/scroll event
+										rt/actors/scroll rt event
+									]
+								] gui-console-ctx helper-ctx
+								add-layer bind compose [
+									at 3x0 rt: rich-text 252.252.240 options [tool: helper] draw []
 									wrap all-over with [
-										text: concat copy/part at term/lines term/top tail term/lines newline ;screen-cnt
-										size: window/size - 20 
+										text: concat copy/part at term/lines curtop: term/top tail term/lines newline ;screen-cnt
+										size: as-pair window/size/x - 20 term/line-y;window/size - 20 
 										font: gui-console-ctx/font
 										data: reduce [1x0 'backdrop silver]
+										menu: [
+											"Set context"     set-context 
+											"Forget contexts" global-context
+											"Watch"           watch
+											"Evaluate"        evaluate
+										]
 										actors: object [
-											fix: none
-											on-over: func [face event /local start end wrd txt ret][
+											fix: start: strt: expr-end: expr-len: start-idx: end-idx: fixed-len: wrd: src: block: cur-word: watch?: none
+											contexts: clear [] indexes: clear [] path: clear [] current: clear [] n: 0
+											on-over: func [face event /local end txt ret len new-text pos diff][
+												all [
+													event/away? 
+													;any [fix not empty? indexes]
+													rt/offset/y > 0
+													curtop: diff: rt/offset/y / term/line-h
+													attempt [new-text: concat copy/part at term/lines term/top diff newline]
+													len: 1 + length? new-text
+													renew-text face event
+													case [
+														fix [
+															change face/data as-pair start-idx + len fixed-len
+															start: at face/text face/data/1/x
+															expr-end: scope start true
+														]
+														not empty? indexes [
+															forall indexes [if integer? indexes/1 [indexes/1: indexes/1 + len]]
+														]
+													]
+													show rt
+												]
 												either fix [
-													if event/down? [ ;Prolong selection TBD
-														
+													either event/down? [ ;Prolong selection 
+														end: any [find at face/text offset-to-caret rt event/offset wspar tail start]
+														if last-word <> end-idx: index? end [
+															;if attempt/safer [loaded: load copy/part start end][
+																change face/data as-pair start-idx: index? start end-idx - start-idx
+																last-word: end-idx
+															;]
+														]
+													][
+														strt: any [
+															find/tail/reverse at event/face/text offset-to-caret event/face event/offset wspar 
+															head event/face/text
+														]
+														if last-word <> idx: index? strt [
+															if all [indexes found: find/tail indexes idx][
+																sidx: first found 
+																report :sidx at face/text idx true;false
+															]
+															last-word: idx
+														]
 													]
 												][
-													start: any [
-														find/tail/reverse at event/face/text offset-to-caret event/face event/offset wspar 
-														head event/face/text
-													]
-													end: any [find start wspar tail start]
-													attempt/safer [txt: copy/part start (index? end) - (index? start)]
-													change face/data as-pair strt: index? start (index? end) - strt
-													if last-word <> face/data/1 [
-														face/data/3: silver
-														clear at face/data 4
-														clear at face/draw 3
-														if attempt/safer [wrd: load txt] [
-															if any [fn: info :wrd set-word? :wrd set-path? :wrd] [
-																scope start true
+													pos: offset-to-caret event/face event/offset
+													if attempt [scanned: scan/next at face/text pos][
+														either all [scanned find reduce [map! paren! block! hash!] first scanned] [
+															start: at face/text pos
+															end: second scanned
+														][
+															start: any [
+																find/tail/reverse at face/text pos wspar 
+																head face/text
 															]
-															if path? wrd [
-																either value? first wrd [
-																	either any-function? get first wrd [
-																		wrd: first wrd
-																	][
-																		if not attempt/safer [get wrd][
-																			wrd: first wrd
-																		]
-																	]
-																][
-																	wrd: first wrd
-																]
-															]
-															either all [any [word? wrd path? wrd] attempt/safer [ret: get wrd] word? :ret][
-																ctx: context? ret
-																in-ctx: either system/words = ctx [
-																	"in global context"
-																][
-																	rejoin ["in context " mold copy/part body-of ctx 20]
-																] 
-																inspector/text: rejoin [help-string :wrd in-ctx]
-															][
-																inspector/text: copy/part help-string :wrd 2000
-															]
-															last-word: first face/data
+															end: any [all [is-string? start end-of-string start] find start wspar tail start] 
 														]
+														attempt/safer [txt: copy/part start (index? end) - (index? start)]
+														;if not all [find/match ["==" ">>"] txt txt/-1 = newline][
+														;	probe copy/part skip txt -2 5
+															change face/data as-pair start-idx: index? start expr-len: (index? end) - start-idx
+															if last-word <> face/data/1 [
+																face/data/3: silver
+																clear at face/data 4
+																clear at face/draw 3
+																either all [indexes found: find/tail indexes index? start][ 
+																	sidx: first found 
+																	report :sidx start true;false
+																][
+																	all [
+																		attempt/safer [wrd: load txt]
+																		report :wrd start true
+																	]
+																]
+																last-word: first face/data
+															]
+														;]
 													]
 												]
 											]
 											on-wheel: func [face event][
-												clear at face/data 4 face/data/1: 0x0 clear at face/draw 3
 												gui-console-ctx/console/actors/on-wheel gui-console-ctx/console event
-												append clear face/text concat copy/part at term/lines term/top tail term/lines newline ;screen-cnt
-												face/size: as-pair window/size/x - 20 second size-text face
+												;scroll face event
 											]
-											on-down: func [face event][hlp-txt/color: either fix: not fix [silver][snow]]
+											scroll: func [face event][
+												either any [fix not empty? contexts] [
+													if 0 <> diff: curtop - term/top [
+														face/offset/y: to integer! face/offset/y + (diff * term/line-h)
+														curtop: term/top
+													]
+												][
+													renew-text face event
+												]
+											]
+											on-down: func [face event][hlp-txt/color: either fix: not fix [fixed-len: face/data/1/y silver][snow]]
 											on-up: func [face event][]
 											on-dbl-click: func [face event][
 												add-note select first select pick helper-tab/pane helper-tab/selected 'pane 'text
 											]
+											on-menu: func [face event /local code n s][
+												fix: yes 
+												hlp-txt/color: silver 
+												fixed-len: face/data/1/y
+												switch event/picked [
+													set-context [
+														either set-word? wrd [
+															register wrd 
+															mark-context wrd
+														][]
+													]
+													global-context [
+														clear indexes
+														clear contexts
+													]
+													watch [
+														either set-word? wrd [
+															helper-tab/selected: 2
+															clear watch/text
+															register/watch wrd
+															foreach entry look/data [
+																if attempt [val: get/any :entry][
+																	append watch/text rejoin [form entry ": " mold val newline]
+																]
+															]
+														][]
+													]
+													evaluate [
+														len: max fixed-len (index? expr-end) - (index? start)
+														parse code: copy/part start len [some [remove [newline [console-prompt | console-result]] | skip]]
+														if attempt [code: load/all code] [
+															inspector/text: mold do bind code console-ctx
+															if watching? [
+																clear watch/text
+																foreach entry look/data [
+																	if attempt [val: get/any :entry][
+																		append watch/text rejoin [form entry ": " mold val newline]
+																	]
+																]
+															]
+														]
+													]
+												]
+												'done
+											]
+											renew-text: func [face event /diff][
+												if 0 <> diff: curtop - term/top [
+													clear at face/data 4 face/data/1: 0x0 clear at face/draw 3
+													append clear face/text concat copy/part at term/lines curtop: term/top tail term/lines newline ;screen-cnt
+													face/offset: 3x0
+													switch event/type [;as-pair window/size/x - 20 
+														wheel scroll [face/size/y: term/line-y + (diff * term/line-h)]
+														over [face/size/y: term/line-y]
+													]
+												]
+											]
+											report: func ['wrd start render /local ctx ret in-ctx][
+												all [
+													any [fn: info :wrd set-word? :wrd set-path? :wrd]
+													expr-end: scope start render
+													expr-len: (index? expr-end) - (index? start)
+												]
+												if path? wrd [
+													either value? first wrd [
+														either any-function? get first wrd [
+															wrd: first wrd
+														][
+															if not attempt/safer [get wrd][
+																wrd: first wrd
+															]
+														]
+													][
+														wrd: first wrd
+													]
+												]
+												either all [any [word? wrd path? wrd] attempt/safer [ret: get wrd] word? :ret][
+													ctx: context? ret
+													in-ctx: either system/words = ctx [
+														"in global context"
+													][
+														rejoin ["in context " mold copy/part body-of ctx 20]
+													] 
+													inspector/text: rejoin [help-string :wrd in-ctx]
+												][
+													;probe reduce ["wrd:" wrd]
+													;this: :wrd
+													inspector/text: copy/part help-string :wrd 2000
+												]
+											]
+											register: func [wrd /watch /local loaded n s blk][
+												if watch?: watch [watching?: yes]
+												expr-len: (index? expr-end) - (index? start)
+												unless watch? [ 
+													append contexts reduce [
+														to word! wrd 
+														as-pair index? start expr-len
+																
+													]
+												]
+												do loaded: load/all copy/part start expr-len
+												block: find find start ws nonws 
+												src: copy/part block expr-end
+												cur-word: to word! wrd
+												transcode/trace src :lex
+												clear path
+												;probe indexes
+											]
+											lex: func [e i t l o /local pth ret][
+												[scan open close]
+												switch e [
+													scan [
+														switch/default t [
+															#[set-word!][
+																cur-word: load copy/part at src o/1 o/2 - o/1 - 1
+																pth: to path! append copy path cur-word
+																either watch? [
+																	append look/text rejoin [form pth space]
+																][
+																	repend indexes [(index? block) + o/1 - 1 pth]
+																]
+															]
+															#[word!][
+																switch/default copy/part at src o/1 o/2 - o/1 [
+																	"object" "context" [
+																		i: find/tail at src o/2 #"[" 
+																		append path cur-word
+																		insert current 'object
+																	]
+																	"make" []
+																	"func" "function" "has" []
+																	"does" []
+																	"is" [
+																		i: find at src o/2 #"["
+																		i: second scan/next i
+																	]
+																][
+																	if current/1 = 'block [
+																		pth: to path! append copy path n: n + 1
+																		either watch? [
+																			append look/text rejoin [form pth space]
+																		][
+																			repend indexes [(index? block) + o/1 - 1 pth]
+																		]
+																	]
+																]
+															]
+														][
+															if current/1 = 'block [
+																pth: to path! append copy path n: n + 1
+																either watch? [
+																	append look/text rejoin [form pth space]
+																][
+																	repend indexes [(index? block) + o/1 - 1 pth]
+																]
+															]
+														]
+														return no
+													]
+													open [
+														switch t [
+															#[string!] []
+															#[block!] #[hash!] [
+																append path either 'block = first current [n][cur-word] 
+																insert current 'block 
+																n: 0
+															]
+															#[map!] [
+																append path either 'block = first current [n][cur-word] 
+																insert current 'map
+															]
+														]
+														return yes
+													]
+													close [
+														remove back tail path 
+														ret: either 'object = first current [no][yes]
+														remove current
+														return ret
+													]
+												]
+											]
+											mark-context: func [wrd /local found end maxpos last-idx end-point][
+												either found: find/tail/part start newline expr-end[
+													maxpos: (index? found) - 1 - (index? start)
+													end: caret-to-offset rt (index? start) + maxpos
+													end-point: caret-to-offset rt index? expr-end
+													until [
+														last-idx: index? found 
+														either found: find/tail/part found newline expr-end [
+															if maxpos < (pos: (index? found) - 1 - last-idx) [
+																end: caret-to-offset rt (index? found) - 1
+																maxpos: pos
+															]
+														][
+															if  (index? expr-end) - last-idx > maxpos [
+																end: end-point
+															]
+														]
+														not found
+													]
+													end: as-pair end/x end-point/y
+												][
+													end: caret-to-offset rt contexts/:wrd/1 + contexts/:wrd/2
+												]
+												repend rt/draw ['box caret-to-offset rt contexts/:wrd/1 end + term/line-h]
+											]
 										]
 									] react [face/size/x: window/size/x - 20]
+									
+									;Fireworks!
+									;at 0x0 i: image (helper-ctx/draw_screen) options [tool: helper]
+									;rate 32
+									;on-time [
+									;	update period
+									;	i/image: draw_screen
+									;	show i
+									;	if 1 = random 30 [
+									;		explode random window/size - 20x0 speed
+									;	]
+									;]
 								] helper-ctx
 								add-tool bind [
 									panel options [tool: helper] [
@@ -1299,7 +1699,7 @@ ctx: context [
 											rt/data/1: 0x0
 											append clear rt/text concat copy/part at term/lines term/top term/screen-cnt newline
 										]]
-										style: drop-list data ["backdrop" backdrop "line" line "text" text] select 1
+										style: drop-list data ["backdrop" backdrop "line" line "hybrid" hybrid "text" text] select 1
 										on-change [
 											switch face/selected [
 												1 [;backdrop
@@ -1307,13 +1707,13 @@ ctx: context [
 													colors: load %Pastel2.png
 													cfg: colors/size/x / 8
 												]
-												2 [;line
+												2 3 [;line/hybrid
 													lh: as-pair 0 term/line-h
 													append rt/draw [line-width 2]
 													colors: load %Category10.png
 													cfg: colors/size/x / 10
 												]
-												3 [;text
+												4 [;text
 													clear face/draw
 													colors: load %Category10.png
 													cfg: colors/size/x / 10
@@ -1328,6 +1728,16 @@ ctx: context [
 											"inspect" [
 												inspector: box 260x400 top left wrap font tool-font
 												react [face/parent/size: tools/size - 40 face/size: face/parent/size]
+											]
+											"watch" [
+												below
+												look: field 260 ""
+												watch: box 260x300 top left wrap font tool-font ""
+												react [
+													face/parent/size: tools/size - 40 
+													look/size/x: face/size/x: face/parent/size/x 
+													face/size/y: face/parent/size/y - face/offset/y
+												]
 											]
 											"keys" [
 												box 260x400 top left font tool-font %%{#"^M"  [exit-ask-loop] 
@@ -1360,15 +1770,24 @@ delete [either event/shift? [cut] [delete-text ctrl?]]
 										]
 										react [face/size/x: tools/size/x - 20]
 										on-change [
-											either "inspect" = pick face/data event/picked [
-												system/view/silent?: yes
-												rt/text: concat copy/part at term/lines term/top term/screen-cnt newline
-												rt/size: as-pair window/size/x - 20 pick size-text rt 2
-												rt/visible?: yes
-											] [
-												system/view/silent?: no
-												rt/visible?: no
-											] 
+											switch pick face/data event/picked [
+												"inspect" [
+													system/view/silent?: yes
+													rt/text: concat copy/part at term/lines term/top term/screen-cnt newline
+													rt/size: as-pair window/size/x - 20 pick size-text rt 2
+													rt/visible?: yes
+													watching?: no
+												] 
+												"watch" [
+													watching?: yes
+													rt/visible?: yes
+												]
+												"keys" [
+													system/view/silent?: no
+													rt/visible?: no
+													watching?: no
+												]
+											]
 										]
 										at 10x0 separator 280x10 loose 
 											react [
@@ -1637,22 +2056,23 @@ delete [either event/shift? [cut] [delete-text ctrl?]]
 		]
 	]
 	add-lines: function [lines][
-		foreach line lines [add-note line]
+		add-note probe concat reverse copy lines newline
+		;foreach line lines [add-note line]
 	]
 	
 	set 'replay function [act /to stop][
 		case [
 			integer? act [
-				foreach line reverse copy/part next system/console/history act [
+				foreach line reverse copy/part next cons/history act [
 					do line
 				]
 			]
 			issue? act [
 				foreach line reverse copy/part either to [
-					find/tail system/console/history stop
+					find/tail cons/history stop
 				][
-					next system/console/history
-				] find system/console/history mold act [
+					next cons/history
+				] find cons/history mold act [
 					do line
 				]
 			]
@@ -1661,20 +2081,20 @@ delete [either event/shift? [cut] [delete-text ctrl?]]
 	
 	;;Don't mess with history :)
 	;remove-lines: function [lines][
-	;	foreach line lines [remove find system/console/history line]
+	;	foreach line lines [remove find cons/history line]
 	;]
 	
 	;Call tools
 	set 'note     func [act /to stop][
 		case [
-			act = 'last  [add-note second system/console/history]
-			integer? act [foreach line reverse copy/part next system/console/history act [add-note line]]
+			act = 'last  [add-note second cons/history]
+			integer? act [foreach line reverse copy/part next cons/history act [add-note line]]
 			issue? act   [
 				foreach line reverse copy/part either to [
-					find/tail system/console/history stop
+					find/tail cons/history stop
 				][
-					next system/console/history
-				] find/tail system/console/history mold act [
+					next cons/history
+				] find/tail cons/history mold act [
 					add-note line
 				]
 			]
@@ -1719,4 +2139,4 @@ delete [either event/shift? [cut] [delete-text ctrl?]]
 		window/actors/on-menu: func spec-of :window/actors/on-menu bind menu-body gui-console-ctx
 	]
 	
-]
+] ()
