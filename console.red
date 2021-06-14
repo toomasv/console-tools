@@ -1015,11 +1015,10 @@ ctx: context [
 											on-down: func [face event][
 												set-focus face
 												ofs: as-pair event/offset/x / scx event/offset/y / scy
-												either lnk?/data [
+												either lnk?/data [;Temporary hack to check possibility of links
 													st: offset-to-caret rt ofs
 													if all [
 														found: find/reverse at rt/text st "http"
-														;found: find/match found "http" 
 														txt: either e: find found brc2 [copy/part found e][copy found]
 													][
 														browse to-url txt
@@ -1098,7 +1097,7 @@ ctx: context [
 										pen red 
 									] react [face/size: window/size]
 								] 
-								link-layer: add-layer [
+								link-layer: add-layer [;Just a hack to check possibility of links
 									at 3x0 rt: rich-text 252.252.240 hidden draw []
 									wrap all-over with [
 										text: concat copy/part at term/lines curtop: term/top tail term/lines newline ;screen-cnt
@@ -1171,7 +1170,7 @@ ctx: context [
 											;]
 										]
 										react [face/size/x: tools/size/x - 70]
-										lnk?: check "Link" on-change [
+										lnk?: check "Link" on-change [;Temporary, to check the possibility of links (mainly copied from `fnd: field...` above)
 											either face/data [
 												/local [lns hs txt]
 												h: term/line-h
@@ -1204,8 +1203,6 @@ ctx: context [
 																found: find/reverse found "http"
 																txt: either e: find found brc2 [copy/part found e][copy found]
 																mark-found/with face found txt
-																;browse to-url txt
-																;true
 															]
 														]
 														sm > max-y
