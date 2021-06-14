@@ -6,7 +6,7 @@ Red []
 			while [
 				not any [
 					tail? path 
-					any-function? attempt [get/any either 1 = length? path [path/1][path]]
+					any-function? attempt [get/any either last? path [path/1][path]] ;1 = length?
 				]
 			][
 				clear back tail path

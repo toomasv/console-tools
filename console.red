@@ -421,10 +421,10 @@ ctx: context [
 		]
 	]
 	focus-console: does [window/selected: gui-console-ctx/console ]
-	mark-found: function [face found] [
+	mark-found: function [face found /with txt] [
 		if found bind [
 			idx: index? found
-			end: find/match found face/text
+			end: find/match found any [txt face/text]
 			edx: index? end
 			shape: reduce switch pick shp/data shp/selected [
 				"line"    [
@@ -1015,27 +1015,38 @@ ctx: context [
 											on-down: func [face event][
 												set-focus face
 												ofs: as-pair event/offset/x / scx event/offset/y / scy
-												dsh: pick shp/data shp/selected
-												cl: clr/draw/fill-pen
-												append face/draw compose/deep switch dsh [
-													"line"    [
-														[pen (cl) line (ofs) (ofs)]
+												either lnk?/data [
+													st: offset-to-caret rt ofs
+													if all [
+														found: find/reverse at rt/text st "http"
+														;found: find/match found "http" 
+														txt: either e: find found brc2 [copy/part found e][copy found]
+													][
+														browse to-url txt
 													]
-													"box"     [
-														[pen (cl) box (ofs) (ofs)]
+												][
+													dsh: pick shp/data shp/selected
+													cl: clr/draw/fill-pen
+													append face/draw compose/deep switch dsh [
+														"line"    [
+															[pen (cl) line (ofs) (ofs)]
+														]
+														"box"     [
+															[pen (cl) box (ofs) (ofs)]
+														]
+														"ellipse" [
+															[pen (cl) ellipse (ofs) 0x0]
+														]
+														"arrow"   [
+															[pen (cl) line (ofs) (ofs) transform 0x0 0 1 1 (as-pair ofs/x * scx ofs/y * scy) [line -7x-3 0x0 -7x3]]
+														]
+														"text"    [
+															[pen (cl) text (ofs) (copy "")]
+														]
 													]
-													"ellipse" [
-														[pen (cl) ellipse (ofs) 0x0]
-													]
-													"arrow"   [
-														[pen (cl) line (ofs) (ofs) transform 0x0 0 1 1 (as-pair ofs/x * scx ofs/y * scy) [line -7x-3 0x0 -7x3]]
-													]
-													"text"    [
-														[pen (cl) text (ofs) (copy "")]
-													]
+													sel: back tail face/draw
+													if dsh = "text" [txt: sel/1]
 												]
-												sel: back tail face/draw
-												if dsh = "text" [txt: sel/1]
 											]
 											on-up: func [face event][ofs: none]
 											on-over: func [face event /local df][
@@ -1087,6 +1098,14 @@ ctx: context [
 										pen red 
 									] react [face/size: window/size]
 								] 
+								link-layer: add-layer [
+									at 3x0 rt: rich-text 252.252.240 hidden draw []
+									wrap all-over with [
+										text: concat copy/part at term/lines curtop: term/top tail term/lines newline ;screen-cnt
+										size: as-pair window/size/x - 20 term/line-y;window/size - 20 
+										font: gui-console-ctx/font
+									]
+								]
 								add-tool bind [
 									panel options [tool: finder] [
 										text "Finder" 60 
@@ -1113,7 +1132,7 @@ ctx: context [
 											face/visible?: no
 										]
 										return
-										fnd: field 280 focus extra [] on-enter [
+										fnd: field 230 focus extra [] on-enter [
 											/local [lns hs]
 											h: term/line-h
 											lns: tail term/lines
@@ -1151,7 +1170,52 @@ ctx: context [
 											;	append/only face/extra reduce [pick shp/data shp/selected clr/draw/fill-pen face/text]
 											;]
 										]
-										react [face/size/x: tools/size/x - 20]
+										react [face/size/x: tools/size/x - 70]
+										lnk?: check "Link" on-change [
+											either face/data [
+												/local [lns hs txt]
+												h: term/line-h
+												lns: tail term/lines
+												hs:  tail term/heights
+												sm: 0
+												max-y: term/line-y  + (2 * h)
+												chw: term/char-width
+												chw2: chw / 2 + 1 
+												until [
+													lns: back lns 
+													found: tail lns/1
+													hs: back hs 
+													sm: sm + hs/1 
+													any [
+														not all?/data
+														until [
+															found: find/reverse found "http"
+															if found [
+																txt: either e: find found brc2 [copy/part found e][copy found]
+																mark-found/with face found txt
+															]
+															not found
+														]
+													]
+													any [
+														all [
+															not all?/data
+															all [
+																found: find/reverse found "http"
+																txt: either e: find found brc2 [copy/part found e][copy found]
+																mark-found/with face found txt
+																;browse to-url txt
+																;true
+															]
+														]
+														sm > max-y
+														head? lns
+													]
+												]
+											][
+												
+											]
+										]
 										do [clrs/offset/y: clr/offset/y]
 									]
 								] finder-ctx
